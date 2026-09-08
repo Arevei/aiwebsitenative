@@ -1,0 +1,6 @@
+INFO:     Started server process [7956]
+INFO:     Waiting for application startup.
+2026-09-08 17:46:10,861 - server - INFO - Arevei backend ready
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
+2026-09-08 18:05:09,133 - httpx - INFO - HTTP Request: POST https://openrouter.ai/api/v1/chat/completions "HTTP/1.1 402 Payment Required"

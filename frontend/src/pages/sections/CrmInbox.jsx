@@ -3,7 +3,7 @@ import { useParams } from "react-router-dom";
 import {
   Users, Calendar, Info, Search, XCircle, Save, BadgeIndianRupee,
   Plus, CheckCircle2, Settings, Trash2, Columns3, Palette, Building2,
-  ReceiptText, FileText, ExternalLink, RefreshCw, FileCode2, MessageSquare, Send,
+  ReceiptText, FileText, ExternalLink, FileCode2, MessageSquare, Send,
   Download, RotateCcw
 } from "lucide-react";
 import { toast } from "sonner";
@@ -565,7 +565,9 @@ function LeadTable({ leads, fields, states, selectedLead, loading, trashed, onSe
                     {trashed ? (
                       <button onClick={() => onRestore(lead)} className="grid place-items-center w-8 h-8 rounded-lg border bg-background hover:bg-accent text-muted-foreground" title="Restore lead"><RotateCcw className="w-4 h-4" /></button>
                     ) : (
-                      <button onClick={() => onTrash(lead)} className="grid place-items-center w-8 h-8 rounded-lg border bg-background hover:bg-destructive/10 text-muted-foreground hover:text-destructive" title="Move lead to trash"><Trash2 className="w-4 h-4" /></button>
+                      <div className="flex items-center justify-end gap-2">
+                        <button onClick={() => onTrash(lead)} className="grid place-items-center w-8 h-8 rounded-lg border bg-background hover:bg-destructive/10 text-muted-foreground hover:text-destructive" title="Move lead to trash"><Trash2 className="w-4 h-4" /></button>
+                      </div>
                     )}
                   </td>
                 </tr>
@@ -684,7 +686,9 @@ function LeadDetail(props) {
             {isTrashed ? (
               <button onClick={() => restoreLead(lead)} disabled={saving} className="grid place-items-center w-9 h-9 rounded-lg border bg-background hover:bg-accent text-muted-foreground disabled:opacity-50" title="Restore lead"><RotateCcw className="w-4 h-4" /></button>
             ) : (
-              <button onClick={() => trashLead(lead)} disabled={saving} className="grid place-items-center w-9 h-9 rounded-lg border bg-background hover:bg-destructive/10 text-muted-foreground hover:text-destructive disabled:opacity-50" title="Move lead to trash"><Trash2 className="w-4 h-4" /></button>
+              <>
+                <button onClick={() => trashLead(lead)} disabled={saving} className="grid place-items-center w-9 h-9 rounded-lg border bg-background hover:bg-destructive/10 text-muted-foreground hover:text-destructive disabled:opacity-50" title="Move lead to trash"><Trash2 className="w-4 h-4" /></button>
+              </>
             )}
             <button onClick={close} className="p-1 rounded-lg hover:bg-accent text-muted-foreground" title="Close details"><XCircle className="w-5 h-5" /></button>
           </div>

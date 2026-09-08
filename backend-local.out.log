@@ -1,0 +1,339 @@
+INFO:     127.0.0.1:58573 - "GET /docs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62504 - "OPTIONS /api/auth/me HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55420 - "OPTIONS /api/auth/me HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62504 - "GET /api/auth/me HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62504 - "GET /api/auth/me HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62504 - "OPTIONS /api/auth/login HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55420 - "POST /api/auth/login HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55420 - "OPTIONS /api/workspaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62504 - "OPTIONS /api/workspaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55420 - "GET /api/workspaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62504 - "OPTIONS /api/workspaces/6a967ef2ad2739958e0bfc88 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57072 - "OPTIONS /api/workspaces/6a967ef2ad2739958e0bfc88/notifications HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61867 - "OPTIONS /api/workspaces/6a967ef2ad2739958e0bfc88 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58468 - "OPTIONS /api/workspaces/6a967ef2ad2739958e0bfc88/notifications HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62504 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58468 - "OPTIONS /api/models HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61867 - "OPTIONS /api/workspaces/6a967ef2ad2739958e0bfc88/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53389 - "OPTIONS /api/workspaces/6a967ef2ad2739958e0bfc88/blogs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58468 - "OPTIONS /api/models HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61867 - "GET /api/models HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53389 - "OPTIONS /api/workspaces/6a967ef2ad2739958e0bfc88/blogs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57072 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/notifications HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53389 - "GET /api/models HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62504 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57072 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/notifications HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55420 - "GET /api/workspaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58468 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55420 - "GET /api/workspaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58468 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55420 - "GET /api/workspaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61867 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/blogs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61867 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/blogs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58468 - "OPTIONS /api/workspaces/6a967ef2ad2739958e0bfc88/crm/settings HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62563 - "OPTIONS /api/workspaces/6a967ef2ad2739958e0bfc88/crm/leads?page=1&limit=10 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58468 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/crm/settings HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55420 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/blogs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61867 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62563 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/crm/leads?page=1&limit=10 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59540 - "OPTIONS /api/workspaces/6a967ef2ad2739958e0bfc88/workflows HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64107 - "OPTIONS /api/workspaces/6a967ef2ad2739958e0bfc88/workflows HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59540 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/workflows HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59540 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/workflows HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59540 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64107 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/blogs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64107 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/blogs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57314 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57314 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64107 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/blogs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64107 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/blogs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64107 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/blogs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64107 - "OPTIONS /api/public/blog/shaping-the-future-of-residential-land-development-in-jamshedpur HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50780 - "OPTIONS /api/public/blog/shaping-the-future-of-residential-land-development-in-jamshedpur HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64107 - "GET /api/auth/me HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64107 - "GET /api/auth/me HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61884 - "GET /api/public/blog/shaping-the-future-of-residential-land-development-in-jamshedpur HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61884 - "GET /api/public/blog/shaping-the-future-of-residential-land-development-in-jamshedpur HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61752 - "GET /docs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61884 - "OPTIONS /api/blogs/6a97de33952796604da683db HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52199 - "OPTIONS /api/blogs/6a97de33952796604da683db HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61136 - "GET /api/blogs/6a97de33952796604da683db HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61136 - "GET /api/blogs/6a97de33952796604da683db HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58211 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/blogs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58211 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/blogs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58211 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/blogs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58211 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/blogs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52577 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/workflows HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52577 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/workflows HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60517 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/blogs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52577 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/workflows HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52577 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/workflows HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60517 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/blogs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60517 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/crm/settings HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60517 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/workflows HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52577 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/crm/leads?page=1&limit=10 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61700 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/workflows HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54750 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54115 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/blogs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54115 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/blogs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64385 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65010 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/blogs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52651 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53684 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/blogs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51026 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52692 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/blogs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51026 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51271 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56587 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/blogs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56722 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49535 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/blogs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50098 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/blogs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60646 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51993 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55387 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/blogs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60536 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/blogs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51743 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56003 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/blogs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56151 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62059 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/blogs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50154 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51047 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/blogs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64657 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64944 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59553 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/blogs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54711 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62667 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/blogs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57145 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/blogs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64043 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58131 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63626 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/blogs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63626 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58131 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/blogs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63884 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/blogs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60671 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52463 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/blogs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50478 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62175 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/blogs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51536 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51536 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62175 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/blogs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64763 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62990 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/blogs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55961 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/blogs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58571 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56195 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/blogs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55259 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51135 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/blogs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51676 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51135 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/blogs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51676 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51676 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51135 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/blogs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61162 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/blogs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59371 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49369 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/blogs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64036 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55019 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/blogs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50547 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62681 - "OPTIONS /api/workspaces/6a967ef2ad2739958e0bfc88/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58809 - "OPTIONS /api/workspaces/6a967ef2ad2739958e0bfc88/blogs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58809 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/blogs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62681 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58220 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/blogs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50117 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52904 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64867 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/blogs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60788 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/blogs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58492 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60208 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53389 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/blogs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52447 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58565 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/blogs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50523 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/blogs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58565 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61223 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/blogs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53766 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51151 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/blogs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55013 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49584 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54639 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/blogs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54639 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49584 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/blogs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63562 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50340 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/blogs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50340 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63562 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/blogs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52772 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58068 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/blogs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51623 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63222 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/blogs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56251 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61638 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/blogs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56251 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/blogs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61638 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57913 - "OPTIONS /api/auth/me HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53370 - "OPTIONS /api/auth/me HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57913 - "GET /api/auth/me HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57913 - "GET /api/auth/me HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57913 - "OPTIONS /api/auth/login HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53370 - "POST /api/auth/login HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53370 - "OPTIONS /api/workspaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57913 - "OPTIONS /api/workspaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53370 - "GET /api/workspaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57913 - "OPTIONS /api/workspaces/6a967ef2ad2739958e0bfc88 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58396 - "OPTIONS /api/workspaces/6a967ef2ad2739958e0bfc88/notifications HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59248 - "OPTIONS /api/workspaces/6a967ef2ad2739958e0bfc88 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57987 - "OPTIONS /api/workspaces/6a967ef2ad2739958e0bfc88/notifications HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57913 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53370 - "GET /api/workspaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57987 - "OPTIONS /api/models HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59248 - "OPTIONS /api/workspaces/6a967ef2ad2739958e0bfc88/crm/analytics/overview HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65115 - "OPTIONS /api/models HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65115 - "GET /api/models HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65115 - "OPTIONS /api/workspaces/6a967ef2ad2739958e0bfc88/crm/analytics/overview HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65115 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/crm/analytics/overview HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:65115 - "GET /api/models HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65115 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/crm/analytics/overview HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:58396 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/notifications HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57913 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53370 - "GET /api/workspaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57987 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53370 - "GET /api/workspaces HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58396 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/notifications HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57987 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59248 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/blogs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59248 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/blogs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53370 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/crm/analytics/overview HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:59248 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57987 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/blogs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59133 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/crm/analytics/overview HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:57409 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/blogs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64045 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51554 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/crm/analytics/overview HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:64045 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57409 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/blogs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57409 - "OPTIONS /api/workspaces/6a967ef2ad2739958e0bfc88/chat HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64045 - "POST /api/workspaces/6a967ef2ad2739958e0bfc88/chat HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55248 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/crm/analytics/overview HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:57409 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/blogs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64045 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61329 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/crm/analytics/overview HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:54130 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54170 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/blogs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53429 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/crm/analytics/overview HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:55252 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/blogs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52772 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64439 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/crm/analytics/overview HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:61360 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/blogs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53057 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51785 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/crm/analytics/overview HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53057 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61360 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/blogs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58181 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/crm/analytics/overview HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:56100 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/blogs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61820 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52951 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/crm/analytics/overview HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:55660 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58072 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/blogs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55550 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/crm/analytics/overview HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:55660 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/blogs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58072 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63596 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/crm/analytics/overview HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:58072 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55660 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/blogs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61985 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/crm/analytics/overview HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:55660 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58072 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/blogs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64732 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/crm/analytics/overview HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:55660 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/blogs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58072 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:62190 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/crm/analytics/overview HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:58072 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55660 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/blogs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65166 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/crm/analytics/overview HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:58072 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/blogs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55660 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61709 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/crm/analytics/overview HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:55660 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58072 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/blogs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53250 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/crm/analytics/overview HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53058 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59600 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/blogs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60737 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/crm/analytics/overview HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52644 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60494 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/blogs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53930 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/crm/analytics/overview HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52644 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/blogs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60494 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52521 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/crm/analytics/overview HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:52644 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/blogs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60494 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60553 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/crm/analytics/overview HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:60494 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/blogs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52644 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55697 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/crm/analytics/overview HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:63994 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:51459 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/blogs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60738 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/crm/analytics/overview HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:51459 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/blogs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63994 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52704 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/crm/analytics/overview HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:58192 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52420 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/blogs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:50870 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/crm/analytics/overview HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:60302 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52562 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/blogs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57671 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/crm/analytics/overview HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:64162 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/blogs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54011 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57287 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/crm/analytics/overview HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:57287 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/crm/analytics/overview HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:65179 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65179 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59119 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/blogs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59119 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/blogs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59119 - "OPTIONS /api/workspaces/6a967ef2ad2739958e0bfc88/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:65179 - "OPTIONS /api/workspaces/6a967ef2ad2739958e0bfc88/blogs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64760 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/crm/analytics/overview HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:65179 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/blogs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59119 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52710 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/crm/analytics/overview HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:65179 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/blogs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59119 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58012 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/crm/analytics/overview HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:57614 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/blogs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59119 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59397 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/crm/analytics/overview HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:58644 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/blogs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:59119 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:55932 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/crm/analytics/overview HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53315 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/blogs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54056 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61291 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/crm/analytics/overview HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:62711 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/blogs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61720 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:58317 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/crm/analytics/overview HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:57184 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/blogs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64088 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64210 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/crm/analytics/overview HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:64088 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57184 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/blogs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:64771 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/crm/analytics/overview HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:54758 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/blogs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57634 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:60851 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/crm/analytics/overview HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:58626 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/blogs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:61926 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:54139 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/crm/analytics/overview HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:62672 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:63156 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/blogs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57290 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/crm/analytics/overview HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53513 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53834 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/blogs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:57290 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/crm/analytics/overview HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:53834 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/tasks HTTP/1.1" 200 OK
+INFO:     127.0.0.1:53513 - "GET /api/workspaces/6a967ef2ad2739958e0bfc88/blogs HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56789 - "OPTIONS /api/auth/me HTTP/1.1" 200 OK
+INFO:     127.0.0.1:52207 - "OPTIONS /api/auth/me HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56789 - "GET /api/auth/me HTTP/1.1" 200 OK
+INFO:     127.0.0.1:56789 - "GET /api/auth/me HTTP/1.1" 200 OK
