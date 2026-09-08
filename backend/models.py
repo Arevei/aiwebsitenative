@@ -42,6 +42,7 @@ class Workspace(BaseDocument):
     name: str
     website_url: str
     public_key: str
+    allowed_blog_origins: List[str] = Field(default_factory=list)
     model_id: str = "gemini-3-flash-preview"
     brain: dict = Field(default_factory=dict)
     brain_status: str = "pending"  # pending | building | ready | error
@@ -62,6 +63,7 @@ class Task(BaseDocument):
     status: str = "pending"  # pending | running | awaiting_approval | done | failed
     output_ref: Optional[str] = None
     output_summary: str = ""
+    output_payload: dict = Field(default_factory=dict)
     logs: List[str] = Field(default_factory=list)
     created_at: str = Field(default_factory=now_iso)
 
@@ -76,6 +78,7 @@ class Blog(BaseDocument):
     read_time: str = "5 min read"
     tags: List[str] = Field(default_factory=list)
     blocks: List[dict] = Field(default_factory=list)
+    content_html: str = ""
     meta_title: str = ""
     meta_description: str = ""
     keywords: List[str] = Field(default_factory=list)
