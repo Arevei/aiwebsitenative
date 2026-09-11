@@ -20,6 +20,7 @@ export default function ForgotPassword() {
       await api.post("/auth/forgot-password", { email });
       setSent(true);
     } catch (err) {
+      setSent(false);
       toast.error(formatError(err.response?.data?.detail) || "Could not send reset link");
     } finally {
       setLoading(false);
@@ -58,7 +59,7 @@ export default function ForgotPassword() {
                 </div>
                 <h1 className="font-display text-2xl font-black">Check your inbox</h1>
                 <p className="text-sm text-muted-foreground mt-2 leading-6">
-                  If an account exists for that email, a reset link has been sent. The link expires in 30 minutes.
+                  A reset link has been sent to your account email. The link expires in 30 minutes.
                 </p>
               </div>
             ) : (

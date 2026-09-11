@@ -293,6 +293,10 @@ def lead_query(ws_id, include_trashed=False, only_trashed=False):
     return q
 
 
+def doc_id_text(doc):
+    return str(doc.get("id") or doc.get("_id") or "")
+
+
 def build_manual_lead(ws_id, body, settings):
     body = body or {}
     states = {s["key"] for s in settings.get("states", [])}
@@ -469,6 +473,131 @@ def date_key(value):
 def month_key(value):
     parsed = parse_date(value)
     return parsed.strftime("%Y-%m") if parsed else ""
+
+
+def filter_date(value, label):
+    if not str(value or "").strip():
+        return None
+    parsed = parse_date(value)
+    if not parsed:
+        raise HTTPException(status_code=400, detail=f"Invalid {label}")
+    return parsed
+
+
+def receipt_effective_datetime(receipt):
+    return parse_date(receipt.get("payment_date")) or parse_date(receipt.get("created_at")) or datetime.min.replace(tzinfo=timezone.utc)
+
+
+def receipt_list_item(lead, receipt):
+    values = lead.get("field_values") or {}
+    customer = receipt.get("customer") if isinstance(receipt.get("customer"), dict) else {}
+    lead_id = doc_id_text(lead)
+    lead_name = (
+        values.get("full_name")
+        or lead.get("full_name")
+        or customer.get("name")
+        or "Customer"
+    )
+    return {
+        "id": str(receipt.get("id") or ""),
+        "receipt_number": receipt.get("receipt_number", ""),
+        "amount": receipt.get("amount", ""),
+        "due_amount": receipt.get("due_amount", ""),
+        "payment_date": receipt.get("payment_date") or receipt.get("created_at") or "",
+        "payment_method": receipt.get("payment_method", ""),
+        "status": receipt.get("status", ""),
+        "payment_stage": receipt.get("payment_stage", ""),
+        "transaction_id": receipt.get("transaction_id", ""),
+        "description": receipt.get("description", ""),
+        "created_at": receipt.get("created_at", ""),
+        "lead_id": lead_id,
+        "lead_name": lead_name,
+        "phone": values.get("phone") or lead.get("phone") or customer.get("phone", ""),
+        "email": values.get("email") or lead.get("email") or customer.get("email", ""),
+    }
+
+
+def receipt_matches_filters(item, search="", from_dt=None, to_dt=None, status="", payment_method="", min_amount=None, max_amount=None):
+    term = str(search or "").strip().lower()
+    if term:
+        searchable = [
+            item.get("receipt_number"),
+            item.get("transaction_id"),
+            item.get("description"),
+            item.get("payment_stage"),
+            item.get("payment_method"),
+            item.get("status"),
+            item.get("lead_name"),
+            item.get("phone"),
+            item.get("email"),
+            item.get("amount"),
+        ]
+        if not any(term in str(value or "").lower() for value in searchable):
+            return False
+
+    receipt_dt = receipt_effective_datetime(item)
+    if from_dt and receipt_dt.date() < from_dt.date():
+        return False
+    if to_dt and receipt_dt.date() > to_dt.date():
+        return False
+
+    status_value = str(status or "").strip().lower()
+    if status_value and status_value != "all" and str(item.get("status") or "").strip().lower() != status_value:
+        return False
+
+    method_value = str(payment_method or "").strip().lower()
+    if method_value and method_value != "all" and str(item.get("payment_method") or "").strip().lower() != method_value:
+        return False
+
+    amount = money_value(item.get("amount"))
+    if min_amount is not None and amount < min_amount:
+        return False
+    if max_amount is not None and amount > max_amount:
+        return False
+    return True
+
+
+def build_receipts_page(
+    leads,
+    page=1,
+    limit=12,
+    search="",
+    from_date="",
+    to_date="",
+    status="",
+    payment_method="",
+    min_amount="",
+    max_amount="",
+):
+    from_dt = filter_date(from_date, "from_date")
+    to_dt = filter_date(to_date, "to_date")
+    min_value = money_value(min_amount) if str(min_amount or "").strip() else None
+    max_value = money_value(max_amount) if str(max_amount or "").strip() else None
+    safe_limit = max(1, min(int(limit or 12), 100))
+    safe_page = max(1, int(page or 1))
+
+    items = []
+    for lead in leads or []:
+        for receipt in lead.get("receipts") or []:
+            item = receipt_list_item(lead, receipt)
+            if receipt_matches_filters(item, search, from_dt, to_dt, status, payment_method, min_value, max_value):
+                items.append(item)
+
+    items.sort(
+        key=lambda item: (
+            receipt_effective_datetime(item),
+            parse_date(item.get("created_at")) or datetime.min.replace(tzinfo=timezone.utc),
+            str(item.get("receipt_number") or ""),
+        ),
+        reverse=True,
+    )
+    start = (safe_page - 1) * safe_limit
+    return {
+        "items": items[start:start + safe_limit],
+        "total": len(items),
+        "page": safe_page,
+        "limit": safe_limit,
+    }
 
 
 def receipt_is_collected(receipt):
@@ -1262,6 +1391,40 @@ async def crm_analytics_overview(ws_id: str, request: Request):
     docs = await db.crm_leads.find(lead_query(ws_id)).sort("created_at", -1).to_list(5000)
     leads = [decorate_lead(doc, settings) for doc in docs]
     return build_crm_analytics(leads)
+
+
+@router.get("/receipts")
+async def list_receipts(
+    ws_id: str,
+    request: Request,
+    page: int = Query(1),
+    limit: int = Query(12),
+    search: str = Query(""),
+    from_date: str = Query(""),
+    to_date: str = Query(""),
+    status: str = Query(""),
+    payment_method: str = Query(""),
+    min_amount: str = Query(""),
+    max_amount: str = Query(""),
+):
+    await require_workspace_access(request, ws_id)
+    db = db_from(request)
+    settings = await ensure_crm_settings(db, ws_id)
+    await purge_expired_trashed_leads(db, ws_id)
+    docs = await db.crm_leads.find(lead_query(ws_id)).sort("created_at", -1).to_list(5000)
+    leads = [decorate_lead(doc, settings) for doc in docs]
+    return build_receipts_page(
+        leads,
+        page=page,
+        limit=limit,
+        search=search,
+        from_date=from_date,
+        to_date=to_date,
+        status=status,
+        payment_method=payment_method,
+        min_amount=min_amount,
+        max_amount=max_amount,
+    )
 
 
 @router.get("/leads")

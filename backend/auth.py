@@ -116,20 +116,21 @@ def build_auth_router(db):
     async def forgot_password(body: ForgotPasswordInput):
         email = body.email.lower()
         user = await db.users.find_one({"email": email})
-        if user:
-            raw_token = secrets.token_urlsafe(32)
-            expires_at = datetime.now(timezone.utc) + timedelta(minutes=RESET_TOKEN_MINUTES)
-            await db.password_reset_tokens.insert_one({
-                "user_id": str(user["_id"]),
-                "email": email,
-                "token_hash": hash_reset_token(raw_token),
-                "used_at": None,
-                "expires_at": expires_at,
-                "created_at": datetime.now(timezone.utc),
-            })
-            reset_url = f"{frontend_url()}/reset-password?token={raw_token}"
-            send_email_best_effort(email, "Reset your Arevei password", reset_password_email(user.get("name"), reset_url))
-        return {"ok": True, "message": "If an account exists for that email, a reset link has been sent."}
+        if not user:
+            raise HTTPException(status_code=404, detail="No account found for that email")
+        raw_token = secrets.token_urlsafe(32)
+        expires_at = datetime.now(timezone.utc) + timedelta(minutes=RESET_TOKEN_MINUTES)
+        await db.password_reset_tokens.insert_one({
+            "user_id": str(user["_id"]),
+            "email": email,
+            "token_hash": hash_reset_token(raw_token),
+            "used_at": None,
+            "expires_at": expires_at,
+            "created_at": datetime.now(timezone.utc),
+        })
+        reset_url = f"{frontend_url()}/reset-password?token={raw_token}"
+        send_email_best_effort(email, "Reset your Arevei password", reset_password_email(user.get("name"), reset_url))
+        return {"ok": True, "message": "Reset link sent."}
 
     @router.post("/reset-password")
     async def reset_password(body: ResetPasswordInput):

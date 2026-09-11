@@ -3,7 +3,7 @@ import { NavLink, Outlet, useParams, useNavigate, Link, useLocation } from "reac
 import {
   LayoutDashboard, Brain as BrainIcon, MessageSquare, ListChecks, FileText, Code2,
   AlertCircle, Bell, CheckCircle2, Globe, Loader2, LogOut, Plus, Boxes, Settings as SettingsIcon,
-  UserCircle, Workflow, Users,
+  UserCircle, Workflow, Users, ReceiptText,
 } from "lucide-react";
 import { toast } from "sonner";
 import api from "../lib/api";
@@ -23,13 +23,16 @@ const nav = [
   { to: "brain", label: "Brain", icon: BrainIcon },
   // { to: "manager", label: "Manager", icon: MessageSquare },
   // { to: "tasks", label: "Tasks", icon: ListChecks },
-  { to: "blogs", label: "Blogs", icon: FileText },
-  { to: "embed", label: "Add Blog System", icon: Code2 },
+  // { to: "blogs", label: "Blogs", icon: FileText },
+  // { to: "embed", label: "Add Blog System", icon: Code2 },
   { to: "workflows", label: "Workflows", icon: Workflow },
   { to: "crm", label: "CRM Leads", icon: Users },
+  { to: "receipts", label: "Receipts", icon: ReceiptText },
 ];
 
 const kindDot = { success: "bg-primary", approval: "bg-amber-500", error: "bg-destructive", info: "bg-muted-foreground" };
+const hiddenActivityTerms = ["task", "blog", "published", "draft", "seo", "creative", "roadmap"];
+const visibleActivityTerms = ["brain", "crm", "lead", "leads", "google sheets", "workflow"];
 const workspaceStatus = {
   building: { icon: Loader2, label: "Training", cls: "text-primary animate-spin" },
   ready: { icon: CheckCircle2, label: "Ready", cls: "text-primary" },
@@ -61,9 +64,15 @@ export default function WorkspaceLayout() {
     }
   }, [wsId]);
 
+  const isVisibleActivity = useCallback((note) => {
+    const text = `${note?.title || ""} ${note?.body || ""}`.toLowerCase();
+    if (hiddenActivityTerms.some((term) => text.includes(term))) return false;
+    return visibleActivityTerms.some((term) => text.includes(term));
+  }, []);
+
   const loadNotes = useCallback(() => {
-    api.get(`/workspaces/${wsId}/notifications`).then((r) => setNotes(r.data)).catch(() => {});
-  }, [wsId]);
+    api.get(`/workspaces/${wsId}/notifications`).then((r) => setNotes((r.data || []).filter(isVisibleActivity))).catch(() => {});
+  }, [wsId, isVisibleActivity]);
 
   const loadWorkspaces = useCallback(() => {
     api.get("/workspaces").then((r) => setWorkspaces(r.data)).catch(() => {});

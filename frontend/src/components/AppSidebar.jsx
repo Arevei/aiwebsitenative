@@ -8,7 +8,7 @@ const ITEMS = [
   // { id: "workspace", label: "Projects", icon: Boxes },
   { id: "brain", label: "Brain", icon: Brain },
   { id: "growth", label: "Growth", icon: TrendingUp },
-  { id: "content", label: "Content", icon: FileText },
+  // { id: "content", label: "Content", icon: FileText },
   { id: "settings", label: "Settings", icon: Settings },
 ];
 

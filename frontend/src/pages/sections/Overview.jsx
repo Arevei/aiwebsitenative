@@ -224,7 +224,7 @@ export default function Overview() {
             {tasks.length === 0 && <div className="text-sm text-muted-foreground">No tasks yet.</div>}
           </div>
         </div> */}
-        <div className="border border-border rounded-md bg-card p-6">
+        {/* <div className="border border-border rounded-md bg-card p-6">
           <div className="flex items-center justify-between mb-4">
             <h3 className="font-display font-bold">Recent blogs</h3>
             <button onClick={() => nav("blogs")} className="text-sm text-primary inline-flex items-center gap-1">View all <ArrowRight className="w-3.5 h-3.5" /></button>
@@ -239,7 +239,7 @@ export default function Overview() {
             ))}
             {blogs.length === 0 && <div className="text-sm text-muted-foreground">No blogs yet.</div>}
           </div>
-        </div>
+        </div> */}
       </div>
     </div>
   );

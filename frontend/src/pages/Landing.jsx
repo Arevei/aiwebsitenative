@@ -6,10 +6,10 @@ import { ThemeToggle } from "../components/ThemeToggle";
 import { useAuth } from "../context/AuthContext";
 
 const pillars = [
-  { icon: Brain, title: "The Brain", body: "Paste a URL. We crawl your site and train a structured business brain — voice, audience, offers, goals." },
+  { icon: Brain, title: "The Brain", body: "Paste a URL. We crawl your site and train a structured business brain - voice, audience, offers, goals." },
   { icon: ListChecks, title: "The Manager", body: "An AI manager builds a 12-month roadmap, breaks it into daily tasks, and schedules execution automatically." },
   { icon: PenLine, title: "Content Agent", body: "Specialist agents auto-write publish-ready blogs with an advanced block editor and full previews." },
-  { icon: Code2, title: "Embed Anywhere", body: "Drop a snippet into any codebase to render your managed blog — this app becomes the control panel." },
+  { icon: Code2, title: "Embed Anywhere", body: "Drop a snippet into any codebase to render your managed blog - this app becomes the control panel." },
 ];
 
 export default function Landing() {
@@ -46,14 +46,13 @@ export default function Landing() {
           className="max-w-3xl"
         >
           <span className="inline-flex items-center gap-2 text-xs tracking-[0.2em] uppercase font-bold text-primary mb-6">
-            <Zap className="w-4 h-4" /> AI-native website growth OS
+            <Zap className="w-4 h-4" /> AI-Native sales system for real estate.
           </span>
           <h1 className="font-display text-4xl sm:text-5xl lg:text-6xl font-black tracking-tight leading-[1.05]">
-            An AI manager that <span className="text-primary">runs your website</span> — end to end.
+            Respond to every new lead in under 5 minutes.
           </h1>
           <p className="mt-6 text-lg text-muted-foreground max-w-2xl leading-relaxed">
-            Arevei trains a business brain from your site, drafts a 12-month growth roadmap, auto-creates and
-            schedules daily tasks, and lets specialist agents write and publish content — with you in control.
+            Arevei instantly engages, qualifies, and routes every new enquiry&mdash;so your sales team never misses a high-intent buyer because no one followed up in time.
           </p>
           <div className="mt-9 flex flex-wrap items-center gap-4">
             <button
@@ -64,7 +63,7 @@ export default function Landing() {
               Build my brain <ArrowRight className="w-4 h-4" />
             </button>
             <Link to="/login" className="text-sm font-medium text-muted-foreground hover:text-foreground transition-colors">
-              I already have an account →
+              I already have an account -&gt;
             </Link>
           </div>
         </motion.div>

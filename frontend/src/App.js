@@ -25,6 +25,7 @@ import PublicBlog from "./pages/PublicBlog";
 import Workflows from "./pages/sections/Workflows";
 import AdsToCrmWorkflow from "./pages/sections/AdsToCrmWorkflow";
 import CrmInbox from "./pages/sections/CrmInbox";
+import Receipts from "./pages/sections/Receipts";
 import Projects from "./pages/sections/Projects";
 import Settings from "./pages/sections/Settings";
 
@@ -66,6 +67,7 @@ function App() {
                   <Route path="workflows" element={<Workflows />} />
                   <Route path="workflows/ads-to-crm" element={<AdsToCrmWorkflow />} />
                   <Route path="crm" element={<CrmInbox />} />
+                  <Route path="receipts" element={<Receipts />} />
                 </Route>
               </Route>
             </Routes>

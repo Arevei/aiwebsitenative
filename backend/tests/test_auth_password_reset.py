@@ -4,6 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 from bson import ObjectId
+from fastapi import HTTPException
 
 import auth
 
@@ -76,16 +77,19 @@ def test_forgot_password_is_generic_and_creates_hashed_token(monkeypatch):
     assert sent and sent[0][0] == "riya@example.com"
 
 
-def test_forgot_password_unknown_email_does_not_send(monkeypatch):
+def test_forgot_password_unknown_email_rejects_without_sending(monkeypatch):
     db = FakeDb()
     sent = []
     monkeypatch.setattr(auth, "send_email_background", lambda *args: sent.append(args))
     router = auth.build_auth_router(db)
 
     body = SimpleNamespace(email="missing@example.com")
-    response = run(route(router, "/api/auth/forgot-password")(body))
 
-    assert response["ok"] is True
+    with pytest.raises(HTTPException) as exc:
+        run(route(router, "/api/auth/forgot-password")(body))
+
+    assert exc.value.status_code == 404
+    assert exc.value.detail == "No account found for that email"
     assert db.password_reset_tokens.docs == []
     assert sent == []
 
