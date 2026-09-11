@@ -146,12 +146,12 @@ export default function Overview() {
         <p className="text-muted-foreground mt-1">Your AI manager's command center.</p>
       </div>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      {/* <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <Stat icon={Brain} label="Brain status" value={ws.brain_status === "ready" ? "Ready" : "..."} testid="stat-brain" />
         <Stat icon={ListChecks} label="Scheduled tasks" value={tasks.length} testid="stat-tasks" />
         <Stat icon={FileText} label="Published blogs" value={published} testid="stat-blogs" />
         <Stat icon={Sparkles} label="Roadmap months" value={(ws.roadmap || []).length} testid="stat-roadmap" />
-      </div>
+      </div> */}
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <Stat icon={Users} label="Total leads" value={totals.leads} testid="stat-crm-total-leads" />
