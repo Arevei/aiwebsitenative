@@ -13,7 +13,7 @@ from mailer import (
     admin_notify_email,
     frontend_url,
     reset_password_email,
-    send_email_background,
+    send_email,
     welcome_email,
 )
 
@@ -47,11 +47,11 @@ def hash_reset_token(token: str) -> str:
     return hashlib.sha256(token.encode("utf-8")).hexdigest()
 
 
-def send_email_best_effort(to_email: str, subject: str, html_body: str):
+async def send_email_best_effort(to_email: str, subject: str, html_body: str):
     try:
-        send_email_background(to_email, subject, html_body)
+        await send_email(to_email, subject, html_body)
     except Exception:
-        logger.exception("Failed to queue email to %s", to_email)
+        logger.exception("Failed to send email to %s", to_email)
 
 
 class RegisterInput(BaseModel):
@@ -95,8 +95,8 @@ def build_auth_router(db):
                "role": "user", "created_at": datetime.now(timezone.utc).isoformat()}
         res = await db.users.insert_one(doc)
         doc["_id"] = res.inserted_id
-        send_email_best_effort(email, "Welcome to Arevei", welcome_email(body.name))
-        send_email_best_effort(admin_notify_email(), "New Arevei account created", admin_new_user_email(doc))
+        await send_email_best_effort(email, "Welcome to Arevei", welcome_email(body.name))
+        await send_email_best_effort(admin_notify_email(), "New Arevei account created", admin_new_user_email(doc))
         return await _issue(doc, response)
 
     @router.post("/login")
@@ -129,7 +129,7 @@ def build_auth_router(db):
             "created_at": datetime.now(timezone.utc),
         })
         reset_url = f"{frontend_url()}/reset-password?token={raw_token}"
-        send_email_best_effort(email, "Reset your Arevei password", reset_password_email(user.get("name"), reset_url))
+        await send_email_best_effort(email, "Reset your Arevei password", reset_password_email(user.get("name"), reset_url))
         return {"ok": True, "message": "Reset link sent."}
 
     @router.post("/reset-password")

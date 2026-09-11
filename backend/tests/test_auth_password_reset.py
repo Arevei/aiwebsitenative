@@ -62,7 +62,11 @@ def test_forgot_password_is_generic_and_creates_hashed_token(monkeypatch):
     user_id = ObjectId()
     db.users.docs.append({"_id": user_id, "name": "Riya", "email": "riya@example.com", "password_hash": "old"})
     sent = []
-    monkeypatch.setattr(auth, "send_email_background", lambda *args: sent.append(args))
+
+    async def capture_email(*args):
+        sent.append(args)
+
+    monkeypatch.setattr(auth, "send_email", capture_email)
     router = auth.build_auth_router(db)
 
     body = SimpleNamespace(email="riya@example.com")
@@ -80,7 +84,11 @@ def test_forgot_password_is_generic_and_creates_hashed_token(monkeypatch):
 def test_forgot_password_unknown_email_rejects_without_sending(monkeypatch):
     db = FakeDb()
     sent = []
-    monkeypatch.setattr(auth, "send_email_background", lambda *args: sent.append(args))
+
+    async def capture_email(*args):
+        sent.append(args)
+
+    monkeypatch.setattr(auth, "send_email", capture_email)
     router = auth.build_auth_router(db)
 
     body = SimpleNamespace(email="missing@example.com")
@@ -123,10 +131,10 @@ def test_register_does_not_block_when_email_fails(monkeypatch):
     db = FakeDb()
     monkeypatch.setenv("JWT_SECRET", "test-secret")
 
-    def fail_email(*args):
+    async def fail_email(*args):
         raise RuntimeError("smtp down")
 
-    monkeypatch.setattr(auth, "send_email_background", fail_email)
+    monkeypatch.setattr(auth, "send_email", fail_email)
     router = auth.build_auth_router(db)
     body = SimpleNamespace(name="Riya", email="riya@example.com", password="secret1")
     response = SimpleNamespace(set_cookie=lambda *args, **kwargs: None)

@@ -4,7 +4,7 @@ import { toast } from "sonner";
 import { Logo } from "../components/Logo";
 import { ThemeToggle } from "../components/ThemeToggle";
 import { useAuth } from "../context/AuthContext";
-import { formatError } from "../lib/api";
+import api, { formatError } from "../lib/api";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 
@@ -22,7 +22,9 @@ export default function Register() {
     try {
       await register(name, email, password);
       toast.success("Account created");
-      nav("/welcome");
+      const workspaces = await api.get("/workspaces").then((r) => r.data || []).catch(() => []);
+      const latest = workspaces[0];
+      nav(latest ? `/app/w/${latest.id}` : "/welcome", { replace: true });
     } catch (err) {
       toast.error(formatError(err.response?.data?.detail) || "Sign up failed");
     } finally {
