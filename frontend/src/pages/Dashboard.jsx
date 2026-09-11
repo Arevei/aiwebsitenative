@@ -17,7 +17,7 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState(false);
   const [url, setUrl] = useState("");
-  const [modelId, setModelId] = useState("gemini-3-flash-preview");
+  const [modelId, setModelId] = useState("meta-llama/llama-3.3-70b-instruct");
   const [creating, setCreating] = useState(false);
 
   useEffect(() => {

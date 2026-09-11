@@ -21,14 +21,14 @@ BEDROCK_VISION_MODEL_ID = os.environ.get("BEDROCK_VISION_MODEL_ID") or BEDROCK_T
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 NVIDIA_URL = "https://integrate.api.nvidia.com/v1/chat/completions"
 
-DEFAULT_MODEL = "gemini-3-flash-preview"
+DEFAULT_MODEL = "meta-llama/llama-3.3-70b-instruct"
 
 # Model registry surfaced to the UI model picker
 MODELS = [
     {"id": "bedrock-claude-sonnet", "label": "Bedrock Claude Sonnet", "real": BEDROCK_TEXT_MODEL_ID, "provider": "bedrock", "tier": "premium"},
     {"id": "bedrock-vision", "label": "Bedrock Vision", "real": BEDROCK_VISION_MODEL_ID, "provider": "bedrock", "tier": "premium", "vision": True},
-    {"id": "gemini-3-flash-preview", "label": "Gemini 3 Flash", "real": "google/gemini-2.5-flash", "provider": "openrouter", "tier": "fast"},
-    {"id": "deepseek/deepseek-chat", "label": "DeepSeek V3", "real": "deepseek/deepseek-chat", "provider": "openrouter", "tier": "cheap"},
+    # {"id": "gemini-3-flash-preview", "label": "Gemini 3 Flash", "real": "google/gemini-2.5-flash", "provider": "openrouter", "tier": "fast"},
+    # {"id": "deepseek/deepseek-chat", "label": "DeepSeek V3", "real": "deepseek/deepseek-chat", "provider": "openrouter", "tier": "cheap"},
     {"id": "meta-llama/llama-3.3-70b-instruct", "label": "Llama 3.3 70B", "real": "meta-llama/llama-3.3-70b-instruct", "provider": "openrouter", "tier": "cheap"},
 ]
 MODEL_MAP = {m["id"]: m for m in MODELS}

@@ -26,15 +26,6 @@ export default function Workflows() {
       status: adsWorkflow.status,
       icon: FileSpreadsheet,
       active: true,
-    },
-    {
-      id: "forms-to-crm",
-      title: "Google Forms to CRM",
-      description: "Instantly create CRM leads when a client submits a response on Google Forms.",
-      kind: "forms_to_crm",
-      status: "coming_soon",
-      icon: PlusCircle,
-      active: false,
     }
   ];
 

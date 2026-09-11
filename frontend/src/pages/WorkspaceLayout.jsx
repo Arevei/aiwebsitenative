@@ -50,7 +50,7 @@ export default function WorkspaceLayout() {
   const [workspaces, setWorkspaces] = useState([]);
   const [workspaceOpen, setWorkspaceOpen] = useState(false);
   const [workspaceUrl, setWorkspaceUrl] = useState("");
-  const [workspaceModelId, setWorkspaceModelId] = useState("gemini-3-flash-preview");
+  const [workspaceModelId, setWorkspaceModelId] = useState("meta-llama/llama-3.3-70b-instruct");
   const [creatingWorkspace, setCreatingWorkspace] = useState(false);
   const [notFound, setNotFound] = useState(false);
 

@@ -35,13 +35,13 @@ export default function Login() {
         <Logo className="text-lg text-primary-foreground" />
         <div>
           <h2 className="font-display text-4xl font-black leading-tight">
-            Your website, run by an AI manager.
+            Never Miss a Real Estate Lead
           </h2>
           <p className="mt-4 text-primary-foreground/80 max-w-md">
-            Log in to your control panel — brains, roadmaps, agents, and auto-published content.
+            Your CRM, Run by AI Manager
           </p>
         </div>
-        <span className="text-sm text-primary-foreground/60">AI-native website growth OS</span>
+        <span className="text-sm text-primary-foreground/60">AI Native CRM</span>
       </div>
 
       <div className="flex flex-col p-6 sm:p-10">
@@ -64,7 +64,7 @@ export default function Login() {
                 <Label htmlFor="password">Password</Label>
                 <Link to="/forgot-password" data-testid="login-forgot-password-link" className="text-xs font-semibold text-primary hover:underline">Forgot password?</Link>
               </div>
-              <Input id="password" type="password" data-testid="login-password" value={password} onChange={(e) => setPassword(e.target.value)} required placeholder="••••••••" />
+              <Input id="password" type="password" data-testid="login-password" value={password} onChange={(e) => setPassword(e.target.value)} required placeholder="Password" />
             </div>
             <button
               type="submit"
@@ -72,7 +72,7 @@ export default function Login() {
               data-testid="login-submit"
               className="w-full h-11 rounded-full bg-primary text-primary-foreground font-semibold hover:-translate-y-0.5 transition-transform disabled:opacity-60"
             >
-              {loading ? "Logging in…" : "Log in"}
+              {loading ? "Logging in..." : "Log in"}
             </button>
             <p className="text-sm text-muted-foreground text-center">
               No account?{" "}

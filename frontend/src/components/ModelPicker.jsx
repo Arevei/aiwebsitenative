@@ -9,12 +9,15 @@ import {
 } from "./ui/dropdown-menu";
 
 const tierIcon = { premium: Sparkles, fast: Zap, cheap: DollarSign };
+const hiddenModelIds = new Set(["gemini-3-flash-preview", "deepseek/deepseek-chat"]);
 
 export function ModelPicker({ value, onChange }) {
   const [models, setModels] = useState([]);
 
   useEffect(() => {
-    api.get("/models").then((r) => setModels(r.data.models)).catch(() => {});
+    api.get("/models").then((r) => {
+      setModels((r.data.models || []).filter((model) => !hiddenModelIds.has(model.id)));
+    }).catch(() => {});
   }, []);
 
   const current = models.find((m) => m.id === value);

@@ -43,7 +43,7 @@ class Workspace(BaseDocument):
     website_url: str
     public_key: str
     allowed_blog_origins: List[str] = Field(default_factory=list)
-    model_id: str = "gemini-3-flash-preview"
+    model_id: str = "meta-llama/llama-3.3-70b-instruct"
     brain: dict = Field(default_factory=dict)
     brain_status: str = "pending"  # pending | building | ready | error
     roadmap: List[dict] = Field(default_factory=list)

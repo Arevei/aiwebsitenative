@@ -1,15 +1,14 @@
 import { Link, useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
-import { ArrowRight, Brain, ListChecks, PenLine, Code2, Zap } from "lucide-react";
+import { ArrowRight, Brain, ListChecks, Users, Zap } from "lucide-react";
 import { Logo } from "../components/Logo";
 import { ThemeToggle } from "../components/ThemeToggle";
 import { useAuth } from "../context/AuthContext";
 
 const pillars = [
-  { icon: Brain, title: "The Brain", body: "Paste a URL. We crawl your site and train a structured business brain - voice, audience, offers, goals." },
-  { icon: ListChecks, title: "The Manager", body: "An AI manager builds a 12-month roadmap, breaks it into daily tasks, and schedules execution automatically." },
-  { icon: PenLine, title: "Content Agent", body: "Specialist agents auto-write publish-ready blogs with an advanced block editor and full previews." },
-  { icon: Code2, title: "Embed Anywhere", body: "Drop a snippet into any codebase to render your managed blog - this app becomes the control panel." },
+  { icon: Brain, title: "Brain", body: "One context everywhere, your own business is brain." },
+  { icon: ListChecks, title: "AI Manager", body: "Your AI Manager on Autopilot." },
+  { icon: Users, title: "CRM", body: "One CRM for Agents & Human, Qualify more leads." },
 ];
 
 export default function Landing() {
@@ -52,7 +51,7 @@ export default function Landing() {
             Respond to every new lead in under 5 minutes.
           </h1>
           <p className="mt-6 text-lg text-muted-foreground max-w-2xl leading-relaxed">
-            Arevei instantly engages, qualifies, and routes every new enquiry&mdash;so your sales team never misses a high-intent buyer because no one followed up in time.
+            Arevei instantly engages, qualifies, and routes every new enquiry so your sales team never misses a high-intent buyer because no one followed up in time.
           </p>
           <div className="mt-9 flex flex-wrap items-center gap-4">
             <button
@@ -70,7 +69,7 @@ export default function Landing() {
       </section>
 
       <section className="max-w-6xl mx-auto px-6 pb-24">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {pillars.map((p, i) => (
             <motion.div
               key={p.title}
@@ -94,7 +93,7 @@ export default function Landing() {
       <footer className="border-t border-border">
         <div className="max-w-6xl mx-auto px-6 py-8 flex items-center justify-between text-sm text-muted-foreground">
           <Logo />
-          <span>Your website, managed by agents.</span>
+          <span>AI-Native sales system for real estate.</span>
         </div>
       </footer>
     </div>
