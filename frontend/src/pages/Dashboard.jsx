@@ -10,9 +10,9 @@ export default function Dashboard() {
     api.get("/workspaces")
       .then((r) => {
         const latest = r.data?.[0];
-        nav(latest ? `/app/w/${latest.id}` : "/welcome", { replace: true });
+        nav(latest ? `/app/w/${latest.id}` : "/", { replace: true });
       })
-      .catch(() => nav("/welcome", { replace: true }));
+      .catch(() => nav("/", { replace: true }));
   }, [nav]);
 
   return (

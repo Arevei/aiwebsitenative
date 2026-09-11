@@ -10,7 +10,6 @@ import Register from "./pages/Register";
 import ForgotPassword from "./pages/ForgotPassword";
 import ResetPassword from "./pages/ResetPassword";
 import Dashboard from "./pages/Dashboard";
-import Onboarding from "./pages/Onboarding";
 import CodeProjects from "./pages/CodeProjects";
 import CodeWorkspace from "./pages/CodeWorkspace";
 import WorkspaceLayout from "./pages/WorkspaceLayout";
@@ -50,7 +49,7 @@ function App() {
               <Route path="/reset-password" element={<ResetPassword />} />
               <Route path="/blog/:slug" element={<PublicBlog />} />
               <Route element={<Protected />}>
-                <Route path="/welcome" element={<Onboarding />} />
+                <Route path="/welcome" element={<Navigate to="/app" replace />} />
                 <Route path="/app" element={<Dashboard />} />
                 <Route path="/app/code" element={<CodeProjects />} />
                 <Route path="/app/code/:pid" element={<CodeWorkspace />} />

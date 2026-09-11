@@ -24,7 +24,7 @@ export default function Register() {
       toast.success("Account created");
       const workspaces = await api.get("/workspaces").then((r) => r.data || []).catch(() => []);
       const latest = workspaces[0];
-      nav(latest ? `/app/w/${latest.id}` : "/welcome", { replace: true });
+      nav(latest ? `/app/w/${latest.id}` : "/app", { replace: true });
     } catch (err) {
       toast.error(formatError(err.response?.data?.detail) || "Sign up failed");
     } finally {
