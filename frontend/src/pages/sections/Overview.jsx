@@ -188,17 +188,7 @@ export default function Overview() {
         </div>
       </div>
 
-      {ws.brain_status === "ready" && (ws.roadmap || []).length === 0 && (
-        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="border border-primary/30 rounded-md bg-primary/5 p-8 text-center">
-          <Sparkles className="w-8 h-8 text-primary mx-auto mb-3" />
-          <h3 className="font-display text-xl font-bold">Brain is ready. Generate your growth plan.</h3>
-          <p className="text-muted-foreground mt-1 mb-5">The manager will draft a 12-month roadmap and auto-schedule daily tasks.</p>
-          <button onClick={genRoadmap} disabled={genning} data-testid="generate-roadmap-btn" className="inline-flex items-center gap-2 px-6 h-11 rounded-full bg-primary text-primary-foreground font-semibold disabled:opacity-60">
-            {genning ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4" />}
-            {genning ? "Generating..." : "Generate roadmap"}
-          </button>
-        </motion.div>
-      )}
+      
 
       {/* {ws.strategy_summary && (
         <div className="border border-border rounded-md bg-card p-6">
