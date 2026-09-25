@@ -4,7 +4,7 @@ import { toast } from "sonner";
 import { Logo } from "../components/Logo";
 import { ThemeToggle } from "../components/ThemeToggle";
 import { useAuth } from "../context/AuthContext";
-import api, { formatError } from "../lib/api";
+import { formatError } from "../lib/api";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 
@@ -22,9 +22,7 @@ export default function Register() {
     try {
       await register(name, email, password);
       toast.success("Account created");
-      const workspaces = await api.get("/workspaces").then((r) => r.data || []).catch(() => []);
-      const latest = workspaces[0];
-      nav(latest ? `/app/w/${latest.id}` : "/app", { replace: true });
+      nav("/welcome");
     } catch (err) {
       toast.error(formatError(err.response?.data?.detail) || "Sign up failed");
     } finally {
@@ -38,13 +36,13 @@ export default function Register() {
         <Logo className="text-lg text-primary-foreground" />
         <div>
           <h2 className="font-display text-4xl font-black leading-tight">
-            Turn Your CRM In A Growth Machine
+            Turn your website into a growth machine.
           </h2>
           <p className="mt-4 text-primary-foreground/80 max-w-md">
-            Create an account, paste your website URL, and let the AI manager take over.
+            Create an account, paste your URL, and let the AI manager take over.
           </p>
         </div>
-        <span className="text-sm text-primary-foreground/60">AI Native CRM</span>
+        <span className="text-sm text-primary-foreground/60">AI-native website growth OS</span>
       </div>
 
       <div className="flex flex-col p-6 sm:p-10">
@@ -56,7 +54,7 @@ export default function Register() {
           <form onSubmit={submit} className="w-full max-w-sm space-y-5" data-testid="register-form">
             <div>
               <h1 className="font-display text-3xl font-black">Create account</h1>
-              <p className="text-muted-foreground mt-1 text-sm">Start managing your CRM with agents.</p>
+              <p className="text-muted-foreground mt-1 text-sm">Start managing your website with agents.</p>
             </div>
             <div className="space-y-2">
               <Label htmlFor="name">Name</Label>
@@ -76,7 +74,7 @@ export default function Register() {
               data-testid="register-submit"
               className="w-full h-11 rounded-full bg-primary text-primary-foreground font-semibold hover:-translate-y-0.5 transition-transform disabled:opacity-60"
             >
-              {loading ? "Creating..." : "Create account"}
+              {loading ? "Creating…" : "Create account"}
             </button>
             <p className="text-sm text-muted-foreground text-center">
               Already have an account?{" "}

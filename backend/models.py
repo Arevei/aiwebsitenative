@@ -43,7 +43,12 @@ class Workspace(BaseDocument):
     website_url: str
     public_key: str
     allowed_blog_origins: List[str] = Field(default_factory=list)
-    model_id: str = "meta-llama/llama-3.3-70b-instruct"
+    model_id: str = "openai.gpt-oss-120b"
+    ai_qualification_config: dict = Field(default_factory=dict)
+    modules: dict = Field(default_factory=lambda: {"real_estate": True, "agency": False})
+    currency: str = "INR"
+    qualification_profile_id: Optional[str] = None
+    qualification_voice_provider: str = "plivo"
     brain: dict = Field(default_factory=dict)
     brain_status: str = "pending"  # pending | building | ready | error
     roadmap: List[dict] = Field(default_factory=list)
@@ -116,6 +121,14 @@ class GoogleSheetConnection(BaseDocument):
     column_map: dict = Field(default_factory=dict)  # maps standard keys to headers
     cursor: int = 1  # processed rows cursor
     tokens: dict = Field(default_factory=dict)  # access_token, refresh_token, etc.
+    drive_watch_channel_id: Optional[str] = None
+    drive_watch_resource_id: Optional[str] = None
+    drive_watch_token: Optional[str] = None
+    drive_watch_expiration: Optional[int] = None
+    drive_watch_status: str = "inactive"
+    drive_watch_error: Optional[str] = None
+    pending_drive_watch_channel_id: Optional[str] = None
+    pending_drive_watch_token: Optional[str] = None
     created_at: str = Field(default_factory=now_iso)
     updated_at: str = Field(default_factory=now_iso)
 
@@ -125,6 +138,24 @@ class CRMLead(BaseDocument):
     workflow_kind: str = "ads_to_crm"
     source: str = "google_sheet"
     sheet_row_key: str  # spreadsheet_id + tab + row_number or lead_id
+    meta_lead_id: Optional[str] = None
+    meta_created_time: Optional[str] = None
+    meta_ad_id: Optional[str] = None
+    meta_ad_name: Optional[str] = None
+    meta_adset_id: Optional[str] = None
+    meta_adset_name: Optional[str] = None
+    meta_campaign_id: Optional[str] = None
+    meta_campaign_name: Optional[str] = None
+    meta_form_id: Optional[str] = None
+    meta_form_name: Optional[str] = None
+    meta_is_organic: Optional[bool] = None
+    meta_platform: Optional[str] = None
+    google_sheet_spreadsheet_id: Optional[str] = None
+    google_sheet_name: Optional[str] = None
+    google_sheet_row_number: Optional[int] = None
+    last_google_sheet_sync_at: Optional[str] = None
+    google_sheet_sync_status: Optional[str] = None
+    google_sheet_sync_error: Optional[str] = None
     email: Optional[str] = None
     full_name: Optional[str] = None
     phone: Optional[str] = None
@@ -132,12 +163,22 @@ class CRMLead(BaseDocument):
     assigned_salesperson: Optional[str] = None
     notes: str = ""
     lead_notes: List[dict] = Field(default_factory=list)
+    communication_summary: dict = Field(default_factory=dict)
+    qualification_call: dict = Field(default_factory=dict)
+    lead_status: str = "NEW"
+    call_outcome: Optional[str] = None
+    qualification_score: Optional[int] = None
+    lead_temperature: Optional[str] = None
+    call_attempt_count: int = 0
+    campaign_id: Optional[str] = None
+    qualification_profile_id: Optional[str] = None
     fields: dict = Field(default_factory=dict)
     field_values: dict = Field(default_factory=dict)
     status: str = "new"  # new | contacted | won | lost
     customer_status: Optional[str] = None  # lead | customer
     conversion_type: Optional[str] = None  # single_payment | payment_plan
     converted_at: Optional[str] = None
+    opportunity: dict = Field(default_factory=dict)
     payment_plan: dict = Field(default_factory=dict)
     timeline: List[dict] = Field(default_factory=list)
     receipts: List[dict] = Field(default_factory=list)

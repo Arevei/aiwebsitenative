@@ -4,7 +4,7 @@ import { toast } from "sonner";
 import { Logo } from "../components/Logo";
 import { ThemeToggle } from "../components/ThemeToggle";
 import { useAuth } from "../context/AuthContext";
-import api, { formatError } from "../lib/api";
+import { formatError } from "../lib/api";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 
@@ -19,11 +19,11 @@ export default function Login() {
     e.preventDefault();
     setLoading(true);
     try {
-      await login(email, password);
+      const session = await login(email, password);
       toast.success("Welcome back");
-      const workspaces = await api.get("/workspaces").then((r) => r.data || []).catch(() => []);
-      const latest = workspaces[0];
-      nav(latest ? `/app/w/${latest.id}` : "/app", { replace: true });
+      if (!localStorage.getItem("arevei_onboarded")) nav("/welcome");
+      else if (session?.default_workspace_id) nav(`/app/w/${session.default_workspace_id}`);
+      else nav("/app");
     } catch (err) {
       toast.error(formatError(err.response?.data?.detail) || "Login failed");
     } finally {
@@ -37,13 +37,13 @@ export default function Login() {
         <Logo className="text-lg text-primary-foreground" />
         <div>
           <h2 className="font-display text-4xl font-black leading-tight">
-            Never Miss a Real Estate Lead
+            Your website, run by an AI manager.
           </h2>
           <p className="mt-4 text-primary-foreground/80 max-w-md">
-            Your CRM, Run by AI Manager
+            Log in to your control panel — brains, roadmaps, agents, and auto-published content.
           </p>
         </div>
-        <span className="text-sm text-primary-foreground/60">AI Native CRM</span>
+        <span className="text-sm text-primary-foreground/60">AI-native website growth OS</span>
       </div>
 
       <div className="flex flex-col p-6 sm:p-10">
@@ -66,7 +66,7 @@ export default function Login() {
                 <Label htmlFor="password">Password</Label>
                 <Link to="/forgot-password" data-testid="login-forgot-password-link" className="text-xs font-semibold text-primary hover:underline">Forgot password?</Link>
               </div>
-              <Input id="password" type="password" data-testid="login-password" value={password} onChange={(e) => setPassword(e.target.value)} required placeholder="Password" />
+              <Input id="password" type="password" data-testid="login-password" value={password} onChange={(e) => setPassword(e.target.value)} required placeholder="••••••••" />
             </div>
             <button
               type="submit"
@@ -74,7 +74,7 @@ export default function Login() {
               data-testid="login-submit"
               className="w-full h-11 rounded-full bg-primary text-primary-foreground font-semibold hover:-translate-y-0.5 transition-transform disabled:opacity-60"
             >
-              {loading ? "Logging in..." : "Log in"}
+              {loading ? "Logging in…" : "Log in"}
             </button>
             <p className="text-sm text-muted-foreground text-center">
               No account?{" "}

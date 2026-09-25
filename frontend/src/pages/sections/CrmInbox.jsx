@@ -1,20 +1,70 @@
-import { useEffect, useMemo, useState } from "react";
-import { useParams } from "react-router-dom";
+import MetaAttribution from "../../components/MetaAttribution";
+import CrmPipeline from "../../components/CrmPipeline";
+import CrmReminders from "../../components/CrmReminders";
+import OpportunitySelector from "../../components/OpportunitySelector";
+import LeadQualificationPanel from "../../components/LeadQualificationPanel";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { Link, useLocation, useParams } from "react-router-dom";
 import {
   Users, Calendar, Info, Search, XCircle, Save, BadgeIndianRupee,
   Plus, CheckCircle2, Settings, Trash2, Columns3, Palette, Building2,
-  ReceiptText, FileText, ExternalLink, FileCode2, MessageSquare, Send,
-  Download, RotateCcw
+  ReceiptText, FileText, ExternalLink, RefreshCw, FileCode2, MessageSquare, Send,
+  Download, RotateCcw, PhoneCall, Ban, Bot, Power, Star, KeyRound
 } from "lucide-react";
 import { toast } from "sonner";
 import api, { API, formatError } from "../../lib/api";
+
+const CrmPerformance = lazy(() => import("./CrmPerformance"));
 
 const FIELD_TYPES = ["text", "long_text", "email", "phone", "number", "currency", "date", "datetime", "boolean", "select", "multi_select", "url", "json"];
 const DEFAULT_STAGES = [];
 const PAYMENT_METHODS = ["Cash", "Bank Transfer", "UPI", "Cheque", "Card", "Other"];
 const PAYMENT_STATUSES = ["Paid", "Pending"];
 const ORG_FIELDS = ["company_name", "logo_url", "address", "phone", "email", "website", "tax_number", "bank_details", "authorized_signatory", "receipt_prefix", "invoice_prefix"];
-const DETAIL_TABS = ["Details", "Payments", "Receipts", "Invoice", "Notes"];
+const DETAIL_TABS = ["Details", "Qualification", "Reminders", "Payments", "Receipts", "Invoice", "Notes"];
+const DEFAULT_AGENT_MAPPINGS_TEXT = JSON.stringify({
+  workspace_id: "workspace_id",
+  lead_id: "lead_id",
+  session_id: "session.id",
+  call_session_id: "session.id",
+  to_number: "lead.phone",
+  from_number: "agent.from_number",
+  customer_name: "lead.full_name",
+  lead_source: "lead.source",
+  result_url: "callbacks.result_url",
+  status_url: "callbacks.status_url",
+  recording_url: "callbacks.recording_url"
+}, null, 2);
+const EMPTY_AGENT_DRAFT = {
+  display_name: "",
+  flow_id: "",
+  trigger_url: "",
+  auth_type: "basic",
+  auth_username: "",
+  auth_password: "",
+  bearer_token: "",
+  from_number: "",
+  qualification_config_id: "indian_real_estate_v1",
+  enabled: true,
+  is_default: false,
+  input_variable_mappings_text: DEFAULT_AGENT_MAPPINGS_TEXT,
+  extra_payload_text: "{}"
+};
+function selectableAgentIds(agentState) {
+  return [
+    ...(agentState?.agents || []),
+    agentState?.legacy_environment_agent
+  ].filter((agent) => agent && agent.enabled !== false && agent.readiness?.ready !== false).map((agent) => agent.id);
+}
+
+function nextSelectedAgentId(current, agentState) {
+  const ids = selectableAgentIds(agentState);
+  const preferred = agentState?.selected_agent_config_id || "";
+  if (ids.includes(current)) return current;
+  if (ids.includes(preferred)) return preferred;
+  return ids[0] || "";
+}
+
 const today = () => new Date().toISOString().slice(0, 10);
 const stateClasses = {
   blue: "bg-blue-500/10 text-blue-500 border-blue-500/20",
@@ -136,18 +186,38 @@ function finalInvoiceDownloadUrl(wsId, leadId) {
 
 export default function CrmInbox() {
   const { wsId } = useParams();
-  const [activeTab, setActiveTab] = useState("records");
+  const location = useLocation();
+  const [activeTab, setActiveTab] = useState(() => new URLSearchParams(window.location.search).get("tab") === "reminders" ? "reminders" : "records");
+  useEffect(() => { if (new URLSearchParams(location.search).get("tab") === "reminders") setActiveTab("reminders"); }, [location.search]);
+  const [recordsLayout, setRecordsLayout] = useState("list");
+  const [pipelineRevision, setPipelineRevision] = useState(0);
+  const openLead = async (leadOrId) => {
+    const id = typeof leadOrId === "object" ? leadOrId?.id : leadOrId;
+    if (!id) return;
+    try { const { data } = await api.get(`/workspaces/${wsId}/crm/leads/${encodeURIComponent(id)}`); selectLead(data); }
+    catch (e) { toast.error(formatError(e.response?.data?.detail)); }
+  };
   const [recordView, setRecordView] = useState("active");
   const [leads, setLeads] = useState([]);
   const [settings, setSettings] = useState({ fields: [], states: [], templates: [], organization: {} });
+  const [plivoAgentState, setPlivoAgentState] = useState({ agents: [], selected_agent_config_id: "", legacy_environment_agent: null });
+  const [selectedAgentId, setSelectedAgentId] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [callingLeadId, setCallingLeadId] = useState("");
+  const [cancellingCallId, setCancellingCallId] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [campaignQuery, setCampaignQuery] = useState("");
+  const [createdFrom, setCreatedFrom] = useState("");
+  const [createdBefore, setCreatedBefore] = useState("");
+  const [debouncedLeadFilters, setDebouncedLeadFilters] = useState({});
   const [page, setPage] = useState(1);
   const [pagination, setPagination] = useState({ total: 0, page: 1, limit: 10 });
   const [selectedLead, setSelectedLead] = useState(null);
   const [fieldValues, setFieldValues] = useState({});
+  const lastServerValues = useRef({});
   const [showCreateLead, setShowCreateLead] = useState(false);
   const [createValues, setCreateValues] = useState({});
   const [paymentPlan, setPaymentPlan] = useState(planFrom(null));
@@ -156,14 +226,33 @@ export default function CrmInbox() {
   const [newField, setNewField] = useState({ label: "", key: "", type: "text", required: false, options: [] });
   const [newState, setNewState] = useState({ label: "", key: "", color: "blue" });
   const [templateDraft, setTemplateDraft] = useState({ name: "Receipt", type: "receipt", button_label: "Download Receipt", active: true, html: "<h1>Receipt</h1><p>{{full_name}}</p><p>{{email}}</p><table>{{payment_plan.stages}}</table>" });
+  const listRefreshInFlight = useRef(false);
 
   const activeFields = useMemo(() => (settings.fields || []).filter((field) => field.active !== false), [settings.fields]);
-  const states = settings.states?.length ? settings.states : [{ key: "new", label: "New", color: "blue" }];
+  const leadFilters = useMemo(() => ({
+    ...(debouncedSearch.trim() ? { search: debouncedSearch.trim() } : {}),
+    ...(campaignQuery.trim() ? { campaign: campaignQuery.trim() } : {}),
+    ...(createdFrom ? { created_from: new Date(createdFrom).toISOString() } : {}),
+    ...(createdBefore ? { created_before: new Date(new Date(createdBefore).getTime() + 60_000).toISOString() } : {}),
+  }), [debouncedSearch, campaignQuery, createdFrom, createdBefore]);
+  const states = useMemo(() => {
+    const base = settings.states?.length ? settings.states : [{ key: "new", label: "New", color: "blue" }];
+    const hasAiQualified = base.some((state) => state.key === "ai_qualified");
+    return hasAiQualified ? base : [...base, { key: "ai_qualified", label: "AI Qualified", color: "emerald", order: (base.length || 1) + 1 }];
+  }, [settings.states]);
+  const plivoAgents = useMemo(() => {
+    const stored = plivoAgentState.agents || [];
+    return plivoAgentState.legacy_environment_agent ? [...stored, plivoAgentState.legacy_environment_agent] : stored;
+  }, [plivoAgentState]);
+  const enabledPlivoAgents = useMemo(() => plivoAgents.filter((agent) => agent.enabled !== false && agent.readiness?.ready !== false), [plivoAgents]);
+  const hasCallableAgent = true; // Backend resolves the lead profile and validates its workspace provider.
   const totalPages = Math.max(1, Math.ceil((pagination.total || 0) / pagination.limit));
 
   const selectLead = (lead) => {
     setSelectedLead(lead);
-    setFieldValues(valuesFrom(lead, activeFields));
+    const values = valuesFrom(lead, activeFields);
+    lastServerValues.current = values;
+    setFieldValues(values);
     setPaymentPlan(planFrom(lead));
     setConversionType(lead?.conversion_type || "single_payment");
     const summary = lead?.payment_summary || {};
@@ -178,27 +267,72 @@ export default function CrmInbox() {
     }));
   };
 
+  const refreshSelectedLead = (lead, fields = activeFields) => {
+    const previous = lastServerValues.current;
+    const incoming = valuesFrom(lead, fields);
+    setFieldValues((current) => {
+      const merged = { ...incoming };
+      for (const [key, value] of Object.entries(current)) {
+        if (value !== previous[key]) merged[key] = value;
+      }
+      return merged;
+    });
+    lastServerValues.current = incoming;
+    setSelectedLead(lead);
+  };
+
   const openCreateLead = () => {
     setCreateValues(emptyValues(activeFields));
     setShowCreateLead(true);
   };
 
-  const loadAll = async () => {
+  const leadListParams = () => {
+    const params = new URLSearchParams({ page: String(page), limit: "10" });
+    if (statusFilter !== "all") params.set("status", statusFilter);
+    Object.entries(debouncedLeadFilters).forEach(([key, value]) => params.set(key, value));
+    if (recordView === "trash") params.set("trashed", "true");
+    return params;
+  };
+
+  const applyLeadPage = (leadPage) => {
+    const items = leadPage?.items || [];
+    setLeads(items);
+    setPagination({ total: leadPage?.total || 0, page: leadPage?.page || page, limit: leadPage?.limit || 10 });
+  };
+
+  const refreshLeadList = async (signal) => {
+    if (listRefreshInFlight.current) return;
+    listRefreshInFlight.current = true;
+    try {
+      const { data } = await api.get(`/workspaces/${wsId}/crm/leads?${leadListParams().toString()}`, { signal });
+      applyLeadPage(data);
+    } catch (e) {
+      if (e.code !== "ERR_CANCELED") toast.error(formatError(e.response?.data?.detail));
+    } finally {
+      listRefreshInFlight.current = false;
+    }
+  };
+
+  const loadAll = async (signal) => {
     try {
       setLoading(true);
-      const params = new URLSearchParams({ page: String(page), limit: "10" });
-      if (statusFilter !== "all") params.set("status", statusFilter);
-      if (searchQuery.trim()) params.set("search", searchQuery.trim());
-      if (recordView === "trash") params.set("trashed", "true");
-      const [settingsRes, leadsRes] = await Promise.all([
-        api.get(`/workspaces/${wsId}/crm/settings`),
-        api.get(`/workspaces/${wsId}/crm/leads?${params.toString()}`)
-      ]);
-      setSettings(settingsRes.data);
-      setLeads(leadsRes.data.items || []);
-      setPagination({ total: leadsRes.data.total || 0, page: leadsRes.data.page || page, limit: leadsRes.data.limit || 10 });
-      if (selectedLead && !(leadsRes.data.items || []).some((lead) => lead.id === selectedLead.id)) setSelectedLead(null);
+      const params = leadListParams();
+      const { data } = await api.get(`/workspaces/${wsId}/crm/bootstrap?${params.toString()}`, { signal });
+      setSettings(data.settings);
+      const nextPlivoAgents = data.agents || { agents: [], selected_agent_config_id: "", legacy_environment_agent: null };
+      setPlivoAgentState(nextPlivoAgents);
+      setSelectedAgentId((current) => nextSelectedAgentId(current, nextPlivoAgents));
+      applyLeadPage(data.leads);
+      if (selectedLead) {
+        const refreshed = (data.leads?.items || []).find((lead) => lead.id === selectedLead.id);
+        if (refreshed) {
+          refreshSelectedLead(refreshed, (data.settings?.fields || []).filter((field) => field.active !== false));
+        } else {
+          setSelectedLead(null);
+        }
+      }
     } catch (e) {
+      if (e.code === "ERR_CANCELED") return;
       toast.error(formatError(e.response?.data?.detail));
     } finally {
       setLoading(false);
@@ -206,21 +340,83 @@ export default function CrmInbox() {
   };
 
   useEffect(() => {
-    const t = setTimeout(loadAll, 200);
-    return () => clearTimeout(t);
+    const timer = setTimeout(() => setDebouncedSearch(searchQuery), 300);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedLeadFilters(leadFilters), 300);
+    return () => clearTimeout(timer);
+  }, [leadFilters]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    const t = setTimeout(() => loadAll(controller.signal), 50);
+    return () => { clearTimeout(t); controller.abort(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [wsId, statusFilter, page, searchQuery, recordView]);
+  }, [wsId, statusFilter, page, debouncedLeadFilters, recordView]);
+
+  useEffect(() => {
+    const refreshImportedLeads = () => refreshLeadList();
+    window.addEventListener("arevei:sheet-synced", refreshImportedLeads);
+    return () => window.removeEventListener("arevei:sheet-synced", refreshImportedLeads);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [wsId, statusFilter, page, debouncedLeadFilters, recordView]);
+
+  // A Sheet webhook runs on the server, so an already-open browser cannot
+  // receive its new rows directly. Refresh only the lightweight lead page
+  // while CRM records are visible; bootstrap/settings/agents are not repeated.
+  useEffect(() => {
+    if (activeTab !== "records") return undefined;
+    const refreshWhenVisible = () => { if (!document.hidden) refreshLeadList(); };
+    const interval = setInterval(refreshWhenVisible, 15000);
+    window.addEventListener("focus", refreshWhenVisible);
+    return () => { clearInterval(interval); window.removeEventListener("focus", refreshWhenVisible); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, wsId, statusFilter, page, debouncedLeadFilters, recordView]);
 
   const mergeLead = (updated) => {
     setLeads((prev) => prev.map((lead) => lead.id === updated.id ? updated : lead));
     selectLead(updated);
   };
 
+  useEffect(() => {
+    if (!selectedLead?.id) return undefined;
+    let cancelled = false;
+    const interval = setInterval(async () => {
+      if (document.hidden) return;
+      try {
+        const r = await api.get(`/workspaces/${wsId}/crm/leads/${selectedLead.id}`);
+        if (!cancelled) {
+          setLeads((prev) => prev.map((lead) => lead.id === r.data.id ? r.data : lead));
+          refreshSelectedLead(r.data);
+        }
+      } catch {
+        clearInterval(interval);
+      }
+    }, 6000);
+    return () => { cancelled = true; clearInterval(interval); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [wsId, selectedLead?.id, selectedLead?.qualification_call?.status]);
+
   const createLead = async () => {
     try {
       setSaving(true);
       const r = await api.post(`/workspaces/${wsId}/crm/leads`, { field_values: createValues });
-      toast.success("Lead created");
+      const call = r.data?.qualification_call || {};
+      if (call.status === "failed") {
+        toast.error(`Lead created, but the call failed: ${call.last_error || "Check the lead's call status"}`);
+      } else if (call.status === "reconcile_required") {
+        toast.warning("Lead created, but the call outcome needs review before retrying");
+      } else if (call.status === "scheduled") {
+        toast.success(call.scheduled_for
+          ? `Lead created. Call scheduled for ${new Date(call.scheduled_for).toLocaleString()}`
+          : "Lead created. Qualification call scheduled");
+      } else if (call.status === "started") {
+        toast.success("Lead created. Qualification call started");
+      } else {
+        toast.success("Lead created");
+      }
       setShowCreateLead(false);
       setRecordView("active");
       setStatusFilter("all");
@@ -426,25 +622,153 @@ export default function CrmInbox() {
     toast.success("Template saved");
   };
 
+  const refreshPlivoAgents = async () => {
+    const { data } = await api.get(`/workspaces/${wsId}/crm/plivo/agents`);
+    const nextState = data || { agents: [], selected_agent_config_id: "", legacy_environment_agent: null };
+    setPlivoAgentState(nextState);
+    setSelectedAgentId((current) => nextSelectedAgentId(current, nextState));
+    return nextState;
+  };
+
+  const agentPayloadFromDraft = (draft) => {
+    const inputMappings = JSON.parse(draft.input_variable_mappings_text || "{}");
+    const extraPayload = JSON.parse(draft.extra_payload_text || "{}");
+    const payload = {
+      display_name: draft.display_name,
+      flow_id: draft.flow_id,
+      trigger_url: draft.trigger_url,
+      auth_type: draft.auth_type,
+      from_number: draft.from_number,
+      qualification_config_id: draft.qualification_config_id,
+      enabled: draft.enabled,
+      is_default: draft.is_default,
+      input_variable_mappings: inputMappings,
+      extra_payload: extraPayload
+    };
+    if (draft.auth_type === "basic") {
+      if (draft.auth_username?.trim()) payload.auth_username = draft.auth_username.trim();
+      if (draft.auth_password?.trim()) payload.auth_password = draft.auth_password.trim();
+    }
+    if (draft.auth_type === "bearer" && draft.bearer_token?.trim()) {
+      payload.bearer_token = draft.bearer_token.trim();
+    }
+    return payload;
+  };
+
+  const savePlivoAgent = async (draft) => {
+    try {
+      setSaving(true);
+      const payload = agentPayloadFromDraft(draft);
+      if (draft.id && draft.id !== "environment") {
+        await api.patch(`/workspaces/${wsId}/crm/plivo/agents/${draft.id}`, payload);
+        toast.success("AI agent saved");
+      } else {
+        const { data } = await api.post(`/workspaces/${wsId}/crm/plivo/agents`, payload);
+        setSelectedAgentId(data.id);
+        toast.success("AI agent connected");
+      }
+      await refreshPlivoAgents();
+      return true;
+    } catch (e) {
+      toast.error(formatError(e.response?.data?.detail || e.message));
+      return false;
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const selectPlivoAgent = async (agent) => {
+    if (!agent?.id || agent.id === "environment") {
+      setSelectedAgentId(agent?.id || "");
+      return;
+    }
+    try {
+      setSaving(true);
+      const { data } = await api.post(`/workspaces/${wsId}/crm/plivo/agents/${agent.id}/select`, {});
+      setSelectedAgentId(data.id);
+      await refreshPlivoAgents();
+      toast.success("Default AI agent selected");
+    } catch (e) {
+      toast.error(formatError(e.response?.data?.detail));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const togglePlivoAgent = async (agent) => {
+    if (!agent?.id || agent.id === "environment") return;
+    try {
+      setSaving(true);
+      await api.patch(`/workspaces/${wsId}/crm/plivo/agents/${agent.id}`, { ...agent, enabled: agent.enabled === false });
+      await refreshPlivoAgents();
+      toast.success(agent.enabled === false ? "AI agent enabled" : "AI agent disabled");
+    } catch (e) {
+      toast.error(formatError(e.response?.data?.detail));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const callLead = async (lead) => {
+    if (!lead?.id) return;
+    try {
+      setCallingLeadId(lead.id);
+      const payload = {}; // Qualification profile selects the provider.
+      const r = await api.post(`/workspaces/${wsId}/crm/leads/${lead.id}/calls/outbound`, payload);
+      if (r.data?.status === "already_active") {
+        toast.info(r.data.reason || "AI qualification call is already in progress");
+        if (r.data?.lead) mergeLead(r.data.lead);
+        return;
+      }
+      const leadPhone = r.data?.lead_phone;
+      const agentName = r.data?.agent_display_name;
+      toast.success(leadPhone ? `Qualification call started to ${leadPhone}${agentName ? ` via ${agentName}` : ""}` : "Qualification call started");
+      if (r.data?.lead) mergeLead(r.data.lead);
+    } catch (e) {
+      toast.error(formatError(e.response?.data?.detail));
+    } finally {
+      setCallingLeadId("");
+    }
+  };
+
+  const cancelScheduledCall = async (lead) => {
+    if (!lead?.id) return;
+    try {
+      setCancellingCallId(lead.id);
+      const r = await api.post(`/workspaces/${wsId}/crm/leads/${lead.id}/calls/qualification/cancel`, {});
+      toast.success("Scheduled call cancelled");
+      if (r.data?.lead) mergeLead(r.data.lead);
+      await loadAll();
+    } catch (e) {
+      toast.error(formatError(e.response?.data?.detail));
+    } finally {
+      setCancellingCallId("");
+    }
+  };
+
   return (
-    <div className="p-4 sm:p-6 max-w-7xl mx-auto space-y-6">
+    <div className="crm-workspace p-4 sm:p-8 max-w-7xl mx-auto space-y-6">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2"><Users className="w-6 h-6 text-primary" /> CRM Leads</h1>
-          <p className="text-sm text-muted-foreground mt-1">Manage records, states, organization details, receipts, and invoices.</p>
+          <h1 className="font-display text-3xl sm:text-4xl font-bold tracking-tight">CRM</h1>
+          <p className="text-sm text-muted-foreground mt-2">Move leads forward. Keep every follow-up and payment in view.</p>
         </div>
-        <div className="flex rounded-lg border bg-card p-1 w-fit">
+        <div className="flex rounded-lg border bg-card p-1 w-fit max-w-full overflow-x-auto" role="group" aria-label="CRM sections">
           <TabButton active={activeTab === "records"} onClick={() => setActiveTab("records")} icon={Users} label="Records" />
+          <TabButton active={activeTab === "reminders"} onClick={() => { setActiveTab("reminders"); setSelectedLead(null); }} icon={Calendar} label="Reminders" />
           <TabButton active={activeTab === "settings"} onClick={() => setActiveTab("settings")} icon={Settings} label="Settings" />
+          <TabButton active={activeTab === "performance"} onClick={() => setActiveTab("performance")} icon={CheckCircle2} label="Performance" />
         </div>
       </div>
 
-      {activeTab === "settings" ? (
+      {activeTab === "reminders" ? <CrmReminders wsId={wsId} onOpenLead={async (id) => { await openLead(id); setActiveTab("records"); }} /> : activeTab === "performance" ? <Suspense fallback={<div className="rounded-xl border bg-card p-8 text-sm text-muted-foreground">Loading performance…</div>}><CrmPerformance wsId={wsId} states={states} /></Suspense> : activeTab === "settings" ? (
         <SettingsPanel
           fields={settings.fields || []}
           states={states}
           organization={settings.organization || {}}
           templates={settings.templates || []}
+          plivoAgents={plivoAgents}
+          selectedAgentId={selectedAgentId}
           newField={newField}
           setNewField={setNewField}
           newState={newState}
@@ -458,31 +782,57 @@ export default function CrmInbox() {
           saveStates={saveStates}
           saveOrganization={saveOrganization}
           saveTemplate={saveTemplate}
+          savePlivoAgent={savePlivoAgent}
+          selectPlivoAgent={selectPlivoAgent}
+          togglePlivoAgent={togglePlivoAgent}
+          saving={saving}
         />
       ) : (
         <>
-          <div className="flex flex-col sm:flex-row gap-3 items-center justify-between">
+          <div className="flex flex-col-reverse lg:flex-row gap-4 lg:items-start justify-between">
             <div className="flex flex-wrap gap-1.5 w-full sm:w-auto">
               <FilterButton active={recordView === "active" && statusFilter === "all"} onClick={() => { setRecordView("active"); setStatusFilter("all"); setPage(1); }}>All Leads</FilterButton>
               {states.map((state) => <FilterButton key={state.key} active={recordView === "active" && statusFilter === state.key} onClick={() => { setRecordView("active"); setStatusFilter(state.key); setPage(1); }}>{state.label}</FilterButton>)}
               <FilterButton active={recordView === "trash"} onClick={() => { setRecordView("trash"); setStatusFilter("all"); setPage(1); }}><Trash2 className="w-3.5 h-3.5" /> Trash</FilterButton>
             </div>
-            <div className="flex gap-2 w-full sm:w-auto">
-              <button onClick={openCreateLead} className="inline-flex items-center gap-2 px-3 h-10 rounded-lg bg-primary text-primary-foreground text-sm font-semibold whitespace-nowrap"><Plus className="w-4 h-4" /> New Lead</button>
-              <div className="relative flex-1 sm:w-72">
-                <Search className="absolute left-3 top-3 w-4 h-4 text-muted-foreground" />
-                <input value={searchQuery} onChange={(e) => { setSearchQuery(e.target.value); setPage(1); }} placeholder={recordView === "trash" ? "Search trash..." : "Search leads..."} className="w-full pl-9 pr-4 h-10 rounded-lg border bg-background text-sm focus:outline-none focus:ring-1 focus:ring-primary" />
-              </div>
+            <div className="flex shrink-0 lg:justify-end">
+              <button onClick={openCreateLead} className="inline-flex items-center justify-center gap-2 px-5 h-11 rounded-lg bg-primary text-primary-foreground text-sm font-semibold whitespace-nowrap"><Plus className="w-4 h-4" /> New Lead</button>
             </div>
           </div>
 
+          <div className="grid gap-3 rounded-xl border bg-card p-3 sm:grid-cols-2 xl:grid-cols-[minmax(220px,2fr)_minmax(160px,1fr)_minmax(160px,1fr)_minmax(160px,1fr)_auto] xl:items-end" role="search" aria-label="Filter CRM leads">
+            <label className="text-xs font-medium text-muted-foreground">Search leads
+              <div className="relative mt-1"><Search className="absolute left-3 top-3 w-4 h-4" /><input value={searchQuery} maxLength={200} onChange={(e) => { setSearchQuery(e.target.value); setPage(1); }} placeholder="Name, phone, or campaign" className="w-full h-10 pl-9 pr-3 rounded-lg border bg-background text-sm text-foreground" /></div>
+            </label>
+            <label className="text-xs font-medium text-muted-foreground">Campaign
+              <input value={campaignQuery} maxLength={200} onChange={(e) => { setCampaignQuery(e.target.value); setPage(1); }} placeholder="Filter campaign" className="mt-1 w-full h-10 px-3 rounded-lg border bg-background text-sm text-foreground" />
+            </label>
+            <label className="text-xs font-medium text-muted-foreground">Created from
+              <input type="datetime-local" value={createdFrom} onChange={(e) => { setCreatedFrom(e.target.value); setPage(1); }} className="mt-1 w-full h-10 px-2 rounded-lg border bg-background text-sm text-foreground" />
+            </label>
+            <label className="text-xs font-medium text-muted-foreground">Created through
+              <input type="datetime-local" min={createdFrom || undefined} value={createdBefore} onChange={(e) => { setCreatedBefore(e.target.value); setPage(1); }} className="mt-1 w-full h-10 px-2 rounded-lg border bg-background text-sm text-foreground" />
+            </label>
+            <button type="button" disabled={!searchQuery && !campaignQuery && !createdFrom && !createdBefore} onClick={() => { setSearchQuery(""); setCampaignQuery(""); setCreatedFrom(""); setCreatedBefore(""); setPage(1); }} className="h-10 px-3 rounded-lg border bg-background text-sm font-medium hover:bg-accent disabled:opacity-40 disabled:cursor-not-allowed">Clear filters</button>
+          </div>
+
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-1 rounded-lg bg-muted p-1" role="group" aria-label="Record views">{["list", "kanban"].map((view) => <button key={view} aria-pressed={recordsLayout === view} onClick={() => { setRecordsLayout(view); if (view === "kanban") setRecordView("active"); }} className={`min-h-9 px-4 rounded-md text-sm font-medium ${recordsLayout === view ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}>{view === "list" ? "List" : "Pipeline"}</button>)}</div>
+            <div className="flex flex-wrap gap-x-4 gap-y-2 text-xs text-muted-foreground">
+              <Link to={`/app/w/${wsId}/workflows/ads-to-crm`} className="inline-flex items-center min-h-9 underline underline-offset-4 hover:text-foreground">Lead source mapping</Link>
+              <Link to={`/app/w/${wsId}/qualification`} className="inline-flex items-center min-h-9 underline underline-offset-4 hover:text-foreground">Voice qualification settings</Link>
+            </div>
+          </div>
           <div className={`grid gap-6 items-start ${selectedLead ? "xl:grid-cols-[minmax(0,1fr)_560px]" : "grid-cols-1"}`}>
-            <div className="space-y-3">
-              <LeadTable leads={leads} fields={activeFields} states={states} selectedLead={selectedLead} loading={loading} trashed={recordView === "trash"} onSelect={selectLead} onStatus={changeStatus} onTrash={trashLead} onRestore={restoreLead} />
+            <div className="space-y-3 min-w-0">
+              {recordsLayout === "kanban" && recordView !== "trash" ? <CrmPipeline wsId={wsId} states={states} filters={debouncedLeadFilters} statusFilter={statusFilter} onSelect={openLead} revision={pipelineRevision} onChanged={(lead) => { setPipelineRevision((v) => v + 1); setSelectedLead((old) => old?.id === lead.id ? lead : old); loadAll(); }} /> : <>
+              <LeadTable leads={leads} fields={activeFields} states={states} selectedLead={selectedLead} loading={loading} trashed={recordView === "trash"} callingLeadId={callingLeadId} canCallWithAI={hasCallableAgent} onSelect={openLead} onStatus={changeStatus} onTrash={trashLead} onRestore={restoreLead} onCall={callLead} />
               <Pagination page={page} totalPages={totalPages} total={pagination.total} onPage={setPage} />
+              </>}
             </div>
             {selectedLead && (
               <LeadDetail
+                key={selectedLead.id}
                 lead={selectedLead}
                 fields={activeFields}
                 states={states}
@@ -503,10 +853,16 @@ export default function CrmInbox() {
                 createInvoice={createInvoice}
                 addLeadNote={addLeadNote}
                 deleteLeadNote={deleteLeadNote}
+                callingLeadId={callingLeadId}
+                canCallWithAI={hasCallableAgent}
+                cancellingCallId={cancellingCallId}
+                callLead={callLead}
+                cancelScheduledCall={cancelScheduledCall}
                 trashLead={trashLead}
                 restoreLead={restoreLead}
                 close={() => setSelectedLead(null)}
                 wsId={wsId}
+                onOpportunityUpdated={(lead) => { mergeLead(lead); setPipelineRevision((value) => value + 1); }}
               />
             )}
           </div>
@@ -536,7 +892,37 @@ function Pagination({ page, totalPages, total, onPage }) {
   return <div className="flex items-center justify-between text-sm text-muted-foreground"><span>{total} leads</span><div className="flex items-center gap-2"><button disabled={page <= 1} onClick={() => onPage(page - 1)} className="px-3 h-8 rounded-lg border bg-card disabled:opacity-40">Previous</button><span>Page {page} of {totalPages}</span><button disabled={page >= totalPages} onClick={() => onPage(page + 1)} className="px-3 h-8 rounded-lg border bg-card disabled:opacity-40">Next</button></div></div>;
 }
 
-function LeadTable({ leads, fields, states, selectedLead, loading, trashed, onSelect, onStatus, onTrash, onRestore }) {
+function normalizeAgentDisplayName(name) {
+  const cleaned = String(name || "")
+    .replace(/\bPlivo\b/gi, "")
+    .replace(/\s{2,}/g, " ")
+    .replace(/\s+AI\s+agent/gi, " AI agent")
+    .trim();
+  return cleaned || "AI agent";
+}
+
+function AgentCallSelector({ agents, selectedAgentId, setSelectedAgentId }) {
+  if (!agents.length) {
+    return (
+      <div className="hidden md:flex h-10 items-center gap-2 rounded-lg border bg-muted px-3 text-xs font-semibold text-muted-foreground">
+        <Bot className="w-4 h-4" />
+        No AI agent
+      </div>
+    );
+  }
+  return (
+    <label className="relative min-w-0 flex-1 sm:flex-none sm:w-56">
+      <Bot className="absolute left-3 top-3 w-4 h-4 text-muted-foreground" />
+      <select value={selectedAgentId} onChange={(e) => setSelectedAgentId(e.target.value)} className="w-full h-10 pl-9 pr-3 rounded-lg border bg-background text-sm font-semibold focus:outline-none focus:ring-1 focus:ring-primary">
+        {agents.map((agent) => (
+          <option key={agent.id} value={agent.id}>{normalizeAgentDisplayName(agent.display_name)}</option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+function LeadTable({ leads, fields, states, selectedLead, loading, trashed, callingLeadId, canCallWithAI, onSelect, onStatus, onTrash, onRestore, onCall }) {
   const primaryFields = fields.slice(0, 4);
   return (
     <div className={`rounded-xl border bg-card overflow-hidden ${loading ? "opacity-60" : ""}`}>
@@ -547,11 +933,16 @@ function LeadTable({ leads, fields, states, selectedLead, loading, trashed, onSe
             {leads.length === 0 ? <tr><td colSpan="4" className="p-8 text-center text-muted-foreground">{loading ? "Loading leads..." : "No leads found."}</td></tr> : leads.map((lead) => {
               const values = valuesFrom(lead, fields);
               const state = states.find((s) => s.key === lead.status) || states[0];
+              const qualification = lead.qualification_call || {};
+              const qualificationStatus = lead.qualification_status || qualification.qualification_status;
+              const isJunk = qualification.qualification_category === "junk";
+              const scheduledFor = qualification.status === "scheduled" && qualification.scheduled_for;
               return (
                 <tr key={lead.id} onClick={() => onSelect(lead)} className={`hover:bg-accent/40 cursor-pointer transition-colors ${selectedLead?.id === lead.id ? "bg-accent/50" : ""}`}>
                   <td className="p-4">
-                    <div className="font-semibold text-foreground flex items-center gap-2">{values.full_name || values.phone || values.email || "Unnamed Lead"}{lead.customer_status === "customer" && <span className="text-[10px] uppercase px-1.5 py-0.5 rounded border border-emerald-500/30 text-emerald-500">Customer</span>}</div>
+                    <div className="font-semibold text-foreground flex items-center gap-2">{values.full_name || values.phone || values.email || "Unnamed Lead"}{lead.customer_status === "customer" && <span className="text-[10px] uppercase px-1.5 py-0.5 rounded border border-emerald-500/30 text-emerald-500">Customer</span>}{isJunk && <span className="text-[10px] uppercase px-1.5 py-0.5 rounded border border-destructive/30 text-destructive">Junk</span>}{qualificationStatus && <span className={`text-[10px] uppercase px-1.5 py-0.5 rounded border ${qualificationStatus === "qualified" ? "border-emerald-500/30 text-emerald-500" : qualificationStatus === "not_qualified" ? "border-destructive/30 text-destructive" : "border-border text-muted-foreground"}`}>{qualificationStatus.replace("_", " ")}</span>}</div>
                     <div className="grid sm:grid-cols-2 gap-x-4 gap-y-1 text-xs text-muted-foreground mt-2">{primaryFields.map((field) => values[field.key] ? <span key={field.key}>{field.label}: {String(values[field.key])}</span> : null)}</div>
+                    {scheduledFor && <div className="mt-2 inline-flex items-center gap-1.5 text-[11px] text-primary"><PhoneCall className="w-3 h-3" /> Scheduled {new Date(scheduledFor).toLocaleString()}</div>}
                   </td>
                   <td className="p-4" onClick={(e) => e.stopPropagation()}>
                     {trashed ? (
@@ -566,6 +957,9 @@ function LeadTable({ leads, fields, states, selectedLead, loading, trashed, onSe
                       <button onClick={() => onRestore(lead)} className="grid place-items-center w-8 h-8 rounded-lg border bg-background hover:bg-accent text-muted-foreground" title="Restore lead"><RotateCcw className="w-4 h-4" /></button>
                     ) : (
                       <div className="flex items-center justify-end gap-2">
+                        <button onClick={() => onCall(lead)} disabled={!values.phone || callingLeadId === lead.id || isJunk || !canCallWithAI} className="grid place-items-center w-8 h-8 rounded-lg border bg-background hover:bg-accent text-muted-foreground disabled:opacity-40" title={isJunk ? "Junk leads cannot be called" : !canCallWithAI ? "Connect an AI agent first" : values.phone ? "Call with AI" : "Phone number required"}>
+                          {callingLeadId === lead.id ? <RefreshCw className="w-4 h-4 animate-spin" /> : <PhoneCall className="w-4 h-4" />}
+                        </button>
                         <button onClick={() => onTrash(lead)} className="grid place-items-center w-8 h-8 rounded-lg border bg-background hover:bg-destructive/10 text-muted-foreground hover:text-destructive" title="Move lead to trash"><Trash2 className="w-4 h-4" /></button>
                       </div>
                     )}
@@ -581,7 +975,7 @@ function LeadTable({ leads, fields, states, selectedLead, loading, trashed, onSe
 }
 
 function LeadDetail(props) {
-  const { lead, fields, states, values, setValues, setLead, saving, saveLead, conversionType, setConversionType, convertLead, paymentPlan, setPaymentPlan, savePlan, receiptForm, setReceiptForm, createReceipt, createInvoice, addLeadNote, deleteLeadNote, trashLead, restoreLead, close, wsId } = props;
+  const { lead, fields, states, values, setValues, setLead, saving, saveLead, conversionType, setConversionType, convertLead, paymentPlan, setPaymentPlan, savePlan, receiptForm, setReceiptForm, createReceipt, createInvoice, addLeadNote, deleteLeadNote, callingLeadId, canCallWithAI, cancellingCallId, callLead, cancelScheduledCall, trashLead, restoreLead, close, wsId, onOpportunityUpdated } = props;
   const [detailTab, setDetailTab] = useState("Details");
   const [activeStageId, setActiveStageId] = useState("");
   const [noteDraft, setNoteDraft] = useState("");
@@ -641,6 +1035,9 @@ function LeadDetail(props) {
   const planStages = currentPlan.stages || [];
   const allPlanStagesPaid = planStages.length > 0 && planStages.every((stage) => stage.status === "paid");
   const canInvoice = (lead.receipts || []).length > 0 && planDue === 0 && (lead.conversion_type === "single_payment" || allPlanStagesPaid);
+  const communication = lead.communication_summary || {};
+  const qualification = lead.qualification_call || {};
+  const isJunkLead = qualification.qualification_category === "junk";
   const activeStageIndex = Math.max(0, (paymentPlan.stages || []).findIndex((stage) => stage.id === (activeStageId || paymentPlan.stages?.[0]?.id)));
   const activeStage = (paymentPlan.stages || [])[activeStageIndex];
   const stageCount = (paymentPlan.stages || []).length;
@@ -678,15 +1075,18 @@ function LeadDetail(props) {
   };
 
   return (
-    <aside className="fixed inset-0 z-50 overflow-y-auto bg-background p-4 xl:static xl:z-auto xl:bg-transparent xl:p-0">
+    <aside aria-label="Lead details" className="fixed inset-0 z-50 overflow-y-auto overscroll-contain bg-background p-4 xl:sticky xl:top-4 xl:z-auto xl:max-h-[calc(100dvh-130px)] xl:bg-transparent xl:p-0">
       <div className="p-5 rounded-xl border bg-card space-y-5 max-w-3xl mx-auto xl:max-w-none">
-        <div className="flex items-start justify-between border-b pb-4">
+        <div className="sticky top-0 z-10 flex items-start justify-between gap-3 border-b pb-4 pt-2 bg-card">
           <div className="min-w-0"><h3 className="font-bold text-lg truncate">{values.full_name || values.phone || values.email || "Unnamed Lead"}</h3><span className="text-xs text-muted-foreground flex items-center gap-1 mt-1"><Calendar className="w-3.5 h-3.5" /> Captured on {new Date(lead.created_at).toLocaleString()}</span></div>
           <div className="flex items-center gap-2">
             {isTrashed ? (
               <button onClick={() => restoreLead(lead)} disabled={saving} className="grid place-items-center w-9 h-9 rounded-lg border bg-background hover:bg-accent text-muted-foreground disabled:opacity-50" title="Restore lead"><RotateCcw className="w-4 h-4" /></button>
             ) : (
               <>
+                <button onClick={() => callLead(lead)} disabled={saving || !values.phone || callingLeadId === lead.id || isJunkLead || !canCallWithAI} className="grid place-items-center w-9 h-9 rounded-lg border bg-background hover:bg-accent text-muted-foreground disabled:opacity-50" title={isJunkLead ? "Junk leads cannot be called" : !canCallWithAI ? "Connect an AI agent first" : values.phone ? "Call with AI" : "Phone number required"}>
+                  {callingLeadId === lead.id ? <RefreshCw className="w-4 h-4 animate-spin" /> : <PhoneCall className="w-4 h-4" />}
+                </button>
                 <button onClick={() => trashLead(lead)} disabled={saving} className="grid place-items-center w-9 h-9 rounded-lg border bg-background hover:bg-destructive/10 text-muted-foreground hover:text-destructive disabled:opacity-50" title="Move lead to trash"><Trash2 className="w-4 h-4" /></button>
               </>
             )}
@@ -694,12 +1094,17 @@ function LeadDetail(props) {
           </div>
         </div>
         {isTrashed && <div className="rounded-lg border border-destructive/20 bg-destructive/5 p-3 text-xs text-destructive">This lead is in trash and can be restored until {new Date(lead.delete_after).toLocaleDateString()}.</div>}
-        <div className="flex rounded-lg border bg-background p-1 overflow-x-auto">
-          {DETAIL_TABS.map((tab) => <button key={tab} onClick={() => setDetailTab(tab)} className={`px-3 h-9 rounded-md text-sm font-semibold whitespace-nowrap ${detailTab === tab ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-accent"}`}>{tab}</button>)}
+        <div className="sticky top-[76px] z-10 flex flex-wrap gap-1 rounded-lg border bg-card p-1" role="group" aria-label="Lead sections">
+          {DETAIL_TABS.map((tab) => <button key={tab} aria-pressed={detailTab === tab} onClick={() => setDetailTab(tab)} className={`px-3 h-9 rounded-md text-xs font-semibold whitespace-nowrap ${detailTab === tab ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-accent"}`}>{tab}</button>)}
         </div>
+        {detailTab === "Qualification" && <><LeadQualificationPanel key={lead.id} lead={lead} /><QualificationSummary communication={communication} qualification={qualification} saving={saving || cancellingCallId === lead.id} onCancel={() => cancelScheduledCall(lead)} /></>}
+        {detailTab === "Reminders" && (isTrashed ? <p className="text-sm text-muted-foreground">Restore this lead to set reminders.</p> : <CrmReminders wsId={wsId} leadId={lead.id} />)}
+        {detailTab === "Payments" && !isCustomer && <p className="text-sm text-muted-foreground">Convert this lead to a customer in Details to manage payments.</p>}
 
         {detailTab === "Details" && (
           <section className="space-y-4">
+            <MetaAttribution lead={lead} wsId={wsId} onUpdate={setLead} />
+            {!isTrashed && <OpportunitySelector wsId={wsId} lead={lead} onUpdated={onOpportunityUpdated} />}
             <div className="grid sm:grid-cols-2 gap-3">
               {fields.map((field) => <DynamicField key={field.key} field={field} value={values[field.key] || ""} onChange={(v) => setField(field.key, v)} />)}
               <label className="space-y-1.5"><span className="text-xs font-semibold text-muted-foreground uppercase">State</span><select value={lead.status} onChange={(e) => setStatus(e.target.value)} className="w-full h-10 px-3 rounded-lg border bg-background text-sm focus:outline-none focus:ring-1 focus:ring-primary">{states.map((s) => <option key={s.key} value={s.key}>{s.label}</option>)}</select></label>
@@ -806,8 +1211,26 @@ function LeadDetail(props) {
               ) : (lead.lead_notes || []).map((note) => (
                 <div key={note.id} className="flex justify-end">
                   <div className="max-w-[86%] rounded-2xl rounded-br-md bg-primary text-primary-foreground px-3 py-2 shadow-sm">
+                    {note.source === "call_agent" && (
+                      <div className="mb-1 flex flex-wrap items-center gap-1.5 text-[10px] font-semibold uppercase opacity-80">
+                        <PhoneCall className="w-3 h-3" />
+                        <span>{note.call_provider === "plivo" ? "AI call" : note.call_provider || "call"}</span>
+                        {note.call_direction && <span>{note.call_direction}</span>}
+                        {note.status && <span>{note.status}</span>}
+                        {note.duration && <span>{note.duration}s</span>}
+                      </div>
+                    )}
+                    {note.source === "lead_context_agent" && (
+                      <div className="mb-1 flex flex-wrap items-center gap-1.5 text-[10px] font-semibold uppercase opacity-80">
+                        <Bot className="w-3 h-3" /><span>Lead Context Agent</span>
+                        {note.context_source && <span>{note.context_source.replaceAll("_", " ")}</span>}
+                      </div>
+                    )}
                     <div className="text-sm whitespace-pre-wrap leading-relaxed">{note.body}</div>
+                    <StructuredCallDetails note={note} />
+                    {note.recording_url && <a href={note.recording_url} target="_blank" rel="noreferrer" className="mt-1 block text-[10px] underline underline-offset-2 opacity-90">Open recording</a>}
                     <div className="mt-1 flex items-center justify-end gap-2 text-[10px] opacity-80">
+                      <span>{note.author}</span>
                       <span>{new Date(note.created_at).toLocaleString()}</span>
                       <button onClick={() => deleteLeadNote(note.id)} disabled={saving} className="opacity-80 hover:opacity-100 disabled:opacity-40" title="Remove note"><Trash2 className="w-3 h-3" /></button>
                     </div>
@@ -844,6 +1267,79 @@ function LeadDetail(props) {
       </div>
     </aside>
   );
+}
+
+function listItems(value) {
+  if (Array.isArray(value)) return value.filter(Boolean).map(String);
+  if (value && typeof value === "object") return Object.entries(value).filter(([, v]) => v != null && String(v).trim()).map(([k, v]) => `${k}: ${v}`);
+  if (typeof value === "string" && value.trim()) return value.split(/\r?\n/).map((v) => v.trim()).filter(Boolean);
+  return [];
+}
+
+function QualificationSummary({ communication, qualification, saving, onCancel }) {
+  const hasSummary = communication.latest_summary || qualification.summary || qualification.status || qualification.scheduled_for;
+  if (!hasSummary) return null;
+  const status = communication.last_call_status || qualification.status || "updated";
+  const recording = communication.last_recording_url || qualification.recording_url;
+  const callTimestamp = qualification.call_timestamp;
+  const category = communication.qualification_category || qualification.qualification_category;
+  const qualificationStatus = communication.qualification_status || qualification.qualification_status;
+  const score = communication.qualification_score ?? qualification.qualification_score;
+  const scheduledFor = qualification.status === "scheduled" && qualification.scheduled_for;
+  const categoryClass = category === "hot" ? "border-red-500/30 text-red-500 bg-red-500/10" : category === "warm" ? "border-amber-500/30 text-amber-500 bg-amber-500/10" : category === "cold" ? "border-blue-500/30 text-blue-500 bg-blue-500/10" : category === "junk" ? "border-destructive/30 text-destructive bg-destructive/10" : "border-border text-muted-foreground bg-muted";
+  return (
+    <section className="rounded-lg border bg-background p-4 space-y-3">
+      <div className="flex items-center justify-between gap-3">
+        <h4 className="font-bold flex items-center gap-2"><PhoneCall className="w-4 h-4 text-primary" /> Qualification</h4>
+        <div className="flex flex-wrap justify-end gap-2">
+          {category && <span className={`px-2 py-1 rounded-md border text-[11px] font-semibold uppercase ${categoryClass}`}>{category}</span>}
+          {qualificationStatus && <span className={`px-2 py-1 rounded-md border text-[11px] font-semibold uppercase ${qualificationStatus === "qualified" ? "border-emerald-500/30 text-emerald-500 bg-emerald-500/10" : qualificationStatus === "not_qualified" ? "border-destructive/30 text-destructive bg-destructive/10" : "border-border text-muted-foreground bg-muted"}`}>{qualificationStatus.replace("_", " ")}</span>}
+          {score != null && score !== "" && <span className="px-2 py-1 rounded-md border bg-card text-[11px] font-semibold">{score}%</span>}
+          <span className="px-2 py-1 rounded-md border bg-muted text-[11px] font-semibold uppercase text-muted-foreground">{status}</span>
+        </div>
+      </div>
+      {scheduledFor && (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-primary/20 bg-primary/5 p-3 text-xs">
+          <span className="font-semibold text-primary">Scheduled for {new Date(scheduledFor).toLocaleString()}</span>
+          <button onClick={onCancel} disabled={saving} className="inline-flex items-center gap-1.5 px-2.5 h-8 rounded-lg border bg-background hover:bg-accent font-semibold disabled:opacity-50" title="Cancel scheduled call">
+            {saving ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Ban className="w-3.5 h-3.5" />}
+            Cancel Call
+          </button>
+        </div>
+      )}
+      {(communication.latest_summary || qualification.summary) && <p className="text-sm leading-relaxed">{communication.latest_summary || qualification.summary}</p>}
+      <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+        {communication.total_call_count ? <span>{communication.total_call_count} call{communication.total_call_count === 1 ? "" : "s"} tracked</span> : null}
+        {(communication.disconnection_reason || qualification.disconnection_reason) && <span>Reason: {communication.disconnection_reason || qualification.disconnection_reason}</span>}
+        {(communication.last_duration || qualification.duration) && <span>{communication.last_duration || qualification.duration}s</span>}
+        {callTimestamp && <span>{new Date(callTimestamp).toLocaleString()}</span>}
+        {recording && <a href={recording} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 px-2.5 h-8 rounded-lg border bg-card hover:bg-accent text-foreground font-semibold"><ExternalLink className="w-3.5 h-3.5" /> Open recording</a>}
+      </div>
+    </section>
+  );
+}
+
+function StructuredCallDetails({ note }) {
+  const answers = listItems(note.answers);
+  const collected = listItems(note.collected_information);
+  const pending = listItems(note.pending_discussion);
+  const steps = listItems(note.recommended_next_steps);
+  const hasDetails = answers.length || collected.length || pending.length || steps.length || note.transcript;
+  if (!hasDetails) return null;
+  return (
+    <div className="mt-2 space-y-2 rounded-lg bg-primary-foreground/10 p-2 text-[11px] leading-relaxed">
+      <InlineDetails label="Answers" items={answers} />
+      <InlineDetails label="Collected" items={collected} />
+      <InlineDetails label="Pending" items={pending} />
+      <InlineDetails label="Next" items={steps} />
+      {note.transcript && <details><summary className="cursor-pointer font-semibold">Transcript</summary><div className="mt-1 whitespace-pre-wrap opacity-90">{note.transcript}</div></details>}
+    </div>
+  );
+}
+
+function InlineDetails({ label, items }) {
+  if (!items.length) return null;
+  return <div><span className="font-semibold">{label}: </span>{items.slice(0, 6).join("; ")}</div>;
 }
 
 function CreateLeadDialog({ fields, values, setValues, saving, onCreate, onClose }) {
@@ -883,6 +1379,9 @@ function DynamicField({ field, value, onChange }) {
 function SmallInput({ label, value, onChange }) {
   return <label className="space-y-1 block"><span className="text-[11px] font-semibold text-muted-foreground uppercase">{label}</span><input value={value} onChange={(e) => onChange(e.target.value)} className="h-9 px-2 text-xs w-full rounded-lg border bg-background focus:outline-none focus:ring-1 focus:ring-primary" /></label>;
 }
+function SecretInput({ label, value, onChange }) {
+  return <label className="space-y-1 block"><span className="text-[11px] font-semibold text-muted-foreground uppercase">{label}</span><input type="password" value={value} onChange={(e) => onChange(e.target.value)} className="h-9 px-2 text-xs w-full rounded-lg border bg-background focus:outline-none focus:ring-1 focus:ring-primary" autoComplete="new-password" /></label>;
+}
 function ReadOnlyValue({ label, value }) {
   return <label className="space-y-1 block"><span className="text-[11px] font-semibold text-muted-foreground uppercase">{label}</span><div className="h-9 px-2 rounded-lg border bg-muted/40 text-xs flex items-center">{value}</div></label>;
 }
@@ -910,7 +1409,118 @@ function StatusSelect({ value, onChange }) {
   );
 }
 
-function SettingsPanel({ fields, states, organization, templates, newField, setNewField, newState, setNewState, templateDraft, setTemplateDraft, addField, updateField, removeField, addState, saveStates, saveOrganization, saveTemplate }) {
+function agentDraftFrom(agent) {
+  if (!agent) return { ...EMPTY_AGENT_DRAFT };
+  return {
+    ...EMPTY_AGENT_DRAFT,
+    id: agent.id,
+    display_name: agent.display_name || "",
+    flow_id: agent.flow_id || agent.provider_agent_id || "",
+    trigger_url: agent.trigger_url || "",
+    auth_type: agent.auth_type || "basic",
+    from_number: agent.from_number || agent.authorized_calling_number || "",
+    qualification_config_id: agent.qualification_config_id || "indian_real_estate_v1",
+    enabled: agent.enabled !== false,
+    is_default: Boolean(agent.is_default),
+    input_variable_mappings_text: JSON.stringify(agent.input_variable_mappings || JSON.parse(DEFAULT_AGENT_MAPPINGS_TEXT), null, 2),
+    extra_payload_text: JSON.stringify(agent.extra_payload || {}, null, 2)
+  };
+}
+
+function PlivoAgentsPanel({ agents, selectedAgentId, onSave, onSelect, onToggle, saving }) {
+  const [draft, setDraft] = useState({ ...EMPTY_AGENT_DRAFT });
+  const editingStored = draft.id && draft.id !== "environment";
+  const setField = (key, value) => setDraft((current) => ({ ...current, [key]: value }));
+  const editAgent = (agent) => setDraft(agentDraftFrom(agent));
+  const newAgent = () => setDraft({ ...EMPTY_AGENT_DRAFT });
+  const submit = async () => {
+    const saved = await onSave(draft);
+    if (saved && !editingStored) newAgent();
+  };
+  return (
+    <section className="rounded-xl border bg-card p-5 space-y-4 xl:col-span-2">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <h3 className="font-bold flex items-center gap-2"><Bot className="w-4 h-4 text-primary" /> AI Voice Agents</h3>
+        <button onClick={newAgent} className="inline-flex items-center gap-2 px-3 h-9 rounded-lg border bg-background hover:bg-accent text-sm font-semibold"><Plus className="w-4 h-4" /> New Agent</button>
+      </div>
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(340px,0.9fr)]">
+        <div className="space-y-2">
+          {agents.length === 0 ? (
+            <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground">No AI agents connected.</div>
+          ) : agents.map((agent) => {
+            const ready = agent.readiness?.ready !== false;
+            const missing = agent.readiness?.missing || [];
+            const active = selectedAgentId === agent.id || agent.is_default;
+            return (
+              <div key={agent.id} className="rounded-lg border bg-background p-3 space-y-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="font-semibold truncate">{normalizeAgentDisplayName(agent.display_name)}</span>
+                      {active && <span className="inline-flex items-center gap-1 rounded-md border border-primary/30 bg-primary/10 px-2 py-0.5 text-[10px] font-semibold uppercase text-primary"><Star className="w-3 h-3" /> Default</span>}
+                      {agent.legacy_environment && <span className="rounded-md border px-2 py-0.5 text-[10px] font-semibold uppercase text-muted-foreground">Env</span>}
+                    </div>
+                    <div className="mt-1 text-xs text-muted-foreground truncate">{agent.flow_id || "No flow ID"} - {agent.from_number || "No number"}</div>
+                  </div>
+                  <span className={`rounded-md border px-2 py-1 text-[10px] font-semibold uppercase ${agent.enabled === false ? "bg-muted text-muted-foreground" : ready ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-500" : "border-destructive/30 bg-destructive/10 text-destructive"}`}>
+                    {agent.enabled === false ? "Disabled" : ready ? "Ready" : "Missing"}
+                  </span>
+                </div>
+                {!ready && missing.length > 0 && <div className="text-xs text-destructive">Missing: {missing.join(", ")}</div>}
+                <div className="flex flex-wrap gap-2">
+                  <button onClick={() => onSelect(agent)} disabled={!ready || agent.enabled === false || saving} className="inline-flex items-center gap-1.5 px-2.5 h-8 rounded-lg border bg-card hover:bg-accent text-xs font-semibold disabled:opacity-40"><Star className="w-3.5 h-3.5" /> Select</button>
+                  {!agent.legacy_environment && <button onClick={() => editAgent(agent)} className="inline-flex items-center gap-1.5 px-2.5 h-8 rounded-lg border bg-card hover:bg-accent text-xs font-semibold"><Settings className="w-3.5 h-3.5" /> Edit</button>}
+                  {!agent.legacy_environment && <button onClick={() => onToggle(agent)} disabled={saving} className="inline-flex items-center gap-1.5 px-2.5 h-8 rounded-lg border bg-card hover:bg-accent text-xs font-semibold disabled:opacity-40"><Power className="w-3.5 h-3.5" /> {agent.enabled === false ? "Enable" : "Disable"}</button>}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        <div className="rounded-lg border bg-background p-4 space-y-3">
+          <div className="grid sm:grid-cols-2 gap-3">
+            <SmallInput label="Display Name" value={draft.display_name} onChange={(v) => setField("display_name", v)} />
+            <SmallInput label="Flow ID" value={draft.flow_id} onChange={(v) => setField("flow_id", v)} />
+            <label className="space-y-1 block sm:col-span-2">
+              <span className="text-[11px] font-semibold text-muted-foreground uppercase">Trigger URL</span>
+              <input value={draft.trigger_url} onChange={(e) => setField("trigger_url", e.target.value)} className="h-9 px-2 text-xs w-full rounded-lg border bg-background focus:outline-none focus:ring-1 focus:ring-primary" />
+            </label>
+            <SmallInput label="From Number" value={draft.from_number} onChange={(v) => setField("from_number", v)} />
+            <SmallInput label="Qualification Config" value={draft.qualification_config_id} onChange={(v) => setField("qualification_config_id", v)} />
+            <label className="space-y-1 block">
+              <span className="text-[11px] font-semibold text-muted-foreground uppercase">Auth</span>
+              <select value={draft.auth_type} onChange={(e) => setField("auth_type", e.target.value)} className="h-9 px-2 text-xs w-full rounded-lg border bg-background focus:outline-none focus:ring-1 focus:ring-primary">
+                <option value="basic">Basic</option>
+                <option value="bearer">Bearer</option>
+                <option value="none">None</option>
+              </select>
+            </label>
+            <label className="flex items-center gap-2 pt-6 text-xs font-semibold text-muted-foreground"><input type="checkbox" checked={draft.enabled} onChange={(e) => setField("enabled", e.target.checked)} /> Enabled</label>
+            {draft.auth_type === "basic" && (
+              <>
+                <SmallInput label="Auth ID" value={draft.auth_username} onChange={(v) => setField("auth_username", v)} />
+                <SecretInput label={editingStored ? "New Auth Token" : "Auth Token"} value={draft.auth_password} onChange={(v) => setField("auth_password", v)} />
+              </>
+            )}
+            {draft.auth_type === "bearer" && <SecretInput label={editingStored ? "New Bearer Token" : "Bearer Token"} value={draft.bearer_token} onChange={(v) => setField("bearer_token", v)} />}
+            <label className="flex items-center gap-2 text-xs font-semibold text-muted-foreground"><input type="checkbox" checked={draft.is_default} onChange={(e) => setField("is_default", e.target.checked)} /> Default agent</label>
+          </div>
+          <label className="space-y-1 block">
+            <span className="text-[11px] font-semibold text-muted-foreground uppercase">Input Variable Mappings</span>
+            <textarea value={draft.input_variable_mappings_text} onChange={(e) => setField("input_variable_mappings_text", e.target.value)} rows={9} className="w-full px-3 py-2 rounded-lg border bg-background text-xs font-mono focus:outline-none focus:ring-1 focus:ring-primary" />
+          </label>
+          <label className="space-y-1 block">
+            <span className="text-[11px] font-semibold text-muted-foreground uppercase">Extra Payload</span>
+            <textarea value={draft.extra_payload_text} onChange={(e) => setField("extra_payload_text", e.target.value)} rows={3} className="w-full px-3 py-2 rounded-lg border bg-background text-xs font-mono focus:outline-none focus:ring-1 focus:ring-primary" />
+          </label>
+          <div className="inline-flex items-center gap-1.5 text-xs text-muted-foreground"><KeyRound className="w-3.5 h-3.5" /> Legacy agent credentials must be migrated to workspace Voice Provider settings.</div>
+          <button onClick={submit} disabled={saving || !draft.display_name.trim() || !draft.trigger_url.trim() || !draft.from_number.trim()} className="inline-flex items-center gap-2 px-3 h-9 rounded-lg bg-primary text-primary-foreground text-sm font-semibold disabled:opacity-50"><Save className="w-4 h-4" /> {editingStored ? "Save Agent" : "Connect Agent"}</button>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function SettingsPanel({ fields, states, organization, templates, plivoAgents, selectedAgentId, newField, setNewField, newState, setNewState, templateDraft, setTemplateDraft, addField, updateField, removeField, addState, saveStates, saveOrganization, saveTemplate, savePlivoAgent, selectPlivoAgent, togglePlivoAgent, saving }) {
   const [org, setOrg] = useState(organization);
   const [fieldDrafts, setFieldDrafts] = useState({});
   const [stateDrafts, setStateDrafts] = useState({});
@@ -1003,6 +1613,8 @@ function SettingsPanel({ fields, states, organization, templates, newField, setN
 
   return (
     <div className="grid gap-6 xl:grid-cols-2 items-start">
+      <QualificationSettingsLink />
+
       <section className="rounded-xl border bg-card p-5 space-y-4">
         <h3 className="font-bold flex items-center gap-2"><Columns3 className="w-4 h-4 text-primary" /> Field Columns</h3>
         <div className="space-y-2">{fields.map((field) => {
@@ -1050,4 +1662,9 @@ function SettingsPanel({ fields, states, organization, templates, newField, setN
       </section>
     </div>
   );
+}
+
+function QualificationSettingsLink() {
+  const { wsId } = useParams();
+  return <section className="rounded-xl border bg-card p-5 space-y-3"><h3 className="font-bold">Lead qualification</h3><p className="text-sm text-muted-foreground">Configure product rules, scoring, next actions and retries. Results appear inside each lead.</p><Link className="inline-block text-sm text-primary" to={`/app/w/${wsId}/qualification`}>Open qualification profiles</Link><Link className="block text-sm text-primary" to={`/app/w/${wsId}/settings`}>Configure voice providers</Link></section>;
 }

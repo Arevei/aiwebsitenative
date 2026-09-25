@@ -6,6 +6,7 @@ import importlib.util
 import time
 import json
 import re
+import uuid
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from urllib.parse import urlparse
@@ -21,22 +22,72 @@ from motor.motor_asyncio import AsyncIOMotorClient
 from bson import ObjectId
 
 from models import Workspace, Task, Blog, Notification, BLOG_IMAGE_POOL, now_iso
-from auth import build_auth_router, get_current_user, seed_admin
+from auth import build_auth_router, get_current_user, get_current_user_and_workspace
 from coding import build_coding_router
 import agents
 import llm_service
+from ai_usage import configure_usage, usage_scope
+from manager_service import ManagerService
+from manager_voice import build_voice_router
+from request_metrics import timed
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger("server")
 
-client = AsyncIOMotorClient(os.environ["MONGO_URL"])
+client = AsyncIOMotorClient(
+    os.environ["MONGO_URL"],
+    appname="arevei-api",
+    serverSelectionTimeoutMS=int(os.environ.get("MONGO_SERVER_SELECTION_TIMEOUT_MS", "5000")),
+    connectTimeoutMS=int(os.environ.get("MONGO_CONNECT_TIMEOUT_MS", "5000")),
+    socketTimeoutMS=int(os.environ.get("MONGO_SOCKET_TIMEOUT_MS", "10000")),
+    maxPoolSize=int(os.environ.get("MONGO_MAX_POOL_SIZE", "20")),
+    maxConnecting=int(os.environ.get("MONGO_MAX_CONNECTING", "4")),
+)
 db = client[os.environ["DB_NAME"]]
+configure_usage(db)
 
 app = FastAPI(title="Arevei AI Manager")
 api = APIRouter(prefix="/api")
+PROCESS_STARTED_AT = time.perf_counter()
+_first_request = True
 PUBLIC_BLOG_RATE = {}
 PUBLIC_BLOG_RATE_LIMIT = 120
 PUBLIC_BLOG_RATE_WINDOW = 60
+
+
+@app.middleware("http")
+async def request_timing(request: Request, call_next):
+    """Emit low-cardinality, privacy-safe request latency diagnostics."""
+    global _first_request
+    request_id = request.headers.get("x-request-id") or uuid.uuid4().hex
+    started = time.perf_counter()
+    cold_start = _first_request
+    _first_request = False
+    try:
+        response = await call_next(request)
+    except Exception:
+        elapsed_ms = round((time.perf_counter() - started) * 1000, 1)
+        route = request.scope.get("route")
+        route_path = getattr(route, "path", "unmatched")
+        logger.exception(
+            "request_complete request_id=%s method=%s route=%s status=500 duration_ms=%s cold_start=%s region=%s",
+            request_id, request.method, route_path, elapsed_ms, cold_start,
+            os.environ.get("VERCEL_REGION", "local"),
+        )
+        raise
+    elapsed_ms = round((time.perf_counter() - started) * 1000, 1)
+    route = request.scope.get("route")
+    route_path = getattr(route, "path", request.url.path)
+    response.headers["X-Request-ID"] = request_id
+    timing_parts = [f'app;dur={elapsed_ms}']
+    timing_parts.extend(f'{name};dur={duration}' for name, duration in getattr(request.state, "server_timings", []))
+    response.headers["Server-Timing"] = ", ".join(timing_parts)
+    logger.info(
+        "request_complete request_id=%s method=%s route=%s status=%s duration_ms=%s cold_start=%s region=%s process_age_ms=%s",
+        request_id, request.method, route_path, response.status_code, elapsed_ms, cold_start,
+        os.environ.get("VERCEL_REGION", "local"), round((time.perf_counter() - PROCESS_STARTED_AT) * 1000, 1),
+    )
+    return response
 
 
 def oid(v):
@@ -49,6 +100,16 @@ def doc_out(doc):
     doc = dict(doc)
     doc["id"] = str(doc.pop("_id"))
     return doc
+
+
+def workspace_out(doc):
+    result = doc_out(doc)
+    if result is None:
+        return None
+    from workspace_modules import workspace_currency, workspace_modules
+    result["modules"] = workspace_modules(doc)
+    result["currency"] = workspace_currency(doc)
+    return result
 
 
 async def require_user(request: Request):
@@ -153,6 +214,9 @@ async def list_models():
         return importlib.util.find_spec(name) is not None
 
     def provider_status(provider):
+        if provider == "bedrock_mantle":
+            ok = bool(llm_service.mantle_config()["key"])
+            return {"configured": ok, "reason": "" if ok else "BEDROCK_MANTLE_API_KEY or AWS_BEARER_TOKEN_BEDROCK is missing"}
         if provider == "bedrock":
             has_creds = bool(os.environ.get("AWS_BEARER_TOKEN_BEDROCK") or os.environ.get("AWS_ACCESS_KEY_ID"))
             has_boto3 = has_python_package("boto3")
@@ -175,6 +239,7 @@ async def list_models():
     models = [{**m, **provider_status(m.get("provider"))} for m in visible_models]
     return {"models": models, "default": llm_service.DEFAULT_MODEL,
             "providers": {
+                "bedrock_mantle": {**provider_status("bedrock_mantle"), "env": "BEDROCK_MANTLE_API_KEY (or AWS_BEARER_TOKEN_BEDROCK)"},
                 "openrouter": {**statuses["openrouter"], "env": "OPENROUTER_API_KEY"},
                 "nvidia": {**statuses["nvidia"], "env": "NVIDIA_NIM_API_KEY"},
             }}
@@ -188,7 +253,8 @@ async def _build_brain_bg(ws_id, url, model_id):
         crawl = await crawl_site(url)
         if crawl.get("page_count", 0) == 0:
             raise ValueError(f"No readable pages found while crawling {url}. The site may block crawlers or return no HTML content.")
-        brain = await agents.build_brain(model_id, crawl)
+        with usage_scope(ws_id, "brain_training"):
+            brain = await agents.build_brain(model_id, crawl)
         name = brain.get("business_profile", {}).get("company_name") or url
         await db.workspaces.update_one({"_id": oid(ws_id)},
                                        {"$set": {"brain": brain, "brain_status": "ready", "name": name}})
@@ -211,36 +277,61 @@ async def create_workspace(request: Request, body: dict = Body(...)):
                    brain_status="building")
     res = await db.workspaces.insert_one(ws.to_mongo())
     ws_id = str(res.inserted_id)
+    from crm import ensure_crm_settings
+    await ensure_crm_settings(db, ws_id)
     asyncio.create_task(_build_brain_bg(ws_id, url, model_id))
     doc = await db.workspaces.find_one({"_id": res.inserted_id})
-    return doc_out(doc)
+    return workspace_out(doc)
 
 
 @api.get("/workspaces")
 async def list_workspaces(request: Request):
     user = await require_user(request)
     docs = await db.workspaces.find({"user_id": str(user["_id"])}).sort("created_at", -1).to_list(100)
-    return [doc_out(d) for d in docs]
+    return [workspace_out(d) for d in docs]
 
 
 @api.get("/workspaces/{ws_id}")
 async def get_workspace(ws_id: str, request: Request):
     user = await require_user(request)
     ws = await owned_workspace(ws_id, user)
-    return doc_out(ws)
+    return workspace_out(ws)
+
+
+@api.get("/workspaces/{ws_id}/bootstrap")
+async def workspace_bootstrap(ws_id: str, request: Request):
+    """Load the workspace shell with one authentication lookup and parallel reads."""
+    async with timed(request, "db_authorize"):
+        user, ws = await get_current_user_and_workspace(request, db, ws_id)
+    async with timed(request, "db_bootstrap"):
+        workspace_docs, notification_docs = await asyncio.gather(
+            db.workspaces.find({"user_id": str(user["_id"])}).sort("created_at", -1).to_list(100),
+            db.notifications.find({"workspace_id": ws_id}).sort("created_at", -1).to_list(50),
+        )
+    return {
+        "workspace": workspace_out(ws),
+        "workspaces": [workspace_out(doc) for doc in workspace_docs],
+        "notifications": [doc_out(doc) for doc in notification_docs],
+    }
 
 
 @api.patch("/workspaces/{ws_id}")
 async def update_workspace(ws_id: str, request: Request, body: dict = Body(...)):
     user = await require_user(request)
     await owned_workspace(ws_id, user)
-    updates = {k: v for k, v in body.items() if k in ("model_id", "name")}
+    updates = {k: v for k, v in body.items() if k in ("model_id", "name", "ai_qualification_config")}
+    if "modules" in body:
+        from workspace_modules import clean_modules
+        updates["modules"] = clean_modules(body["modules"])
+    if "currency" in body:
+        from workspace_modules import clean_currency
+        updates["currency"] = clean_currency(body["currency"])
     if "allowed_blog_origins" in body:
         updates["allowed_blog_origins"] = _clean_origins(body.get("allowed_blog_origins"))
     if updates:
         await db.workspaces.update_one({"_id": oid(ws_id)}, {"$set": updates})
     doc = await db.workspaces.find_one({"_id": oid(ws_id)})
-    return doc_out(doc)
+    return workspace_out(doc)
 
 
 @api.post("/workspaces/{ws_id}/public-key/rotate")
@@ -251,7 +342,7 @@ async def rotate_public_key(ws_id: str, request: Request):
     await db.workspaces.update_one({"_id": oid(ws_id)}, {"$set": {"public_key": new_key}})
     doc = await db.workspaces.find_one({"_id": oid(ws_id)})
     await notify(ws_id, "info", "Publishable blog key rotated", "Update any external blog integrations with the new key.")
-    return doc_out(doc)
+    return workspace_out(doc)
 
 
 @api.post("/workspaces/{ws_id}/rebrain")
@@ -280,11 +371,13 @@ async def gen_roadmap(ws_id: str, request: Request):
         raise HTTPException(400, "Brain is not ready yet")
     model_id = ws.get("model_id")
     brain = ws.get("brain", {})
-    roadmap = await agents.build_roadmap(model_id, brain)
+    with usage_scope(ws_id, "roadmap_strategy"):
+        roadmap = await agents.build_roadmap(model_id, brain)
     await db.workspaces.update_one({"_id": oid(ws_id)}, {"$set": {"roadmap": roadmap.get("months", []),
                                                                    "strategy_summary": roadmap.get("strategy_summary", "")}})
     # generate + schedule tasks
-    raw_tasks = await agents.generate_tasks(model_id, brain, roadmap, count=8)
+    with usage_scope(ws_id, "roadmap_tasks"):
+        raw_tasks = await agents.generate_tasks(model_id, brain, roadmap, count=8)
     await db.tasks.delete_many({"workspace_id": ws_id, "status": "pending"})
     now = datetime.now(timezone.utc)
     auto_count = 0
@@ -322,6 +415,8 @@ async def list_tasks(ws_id: str, request: Request):
 
 async def execute_task(task_doc):
     """Run a task through its specialist agent."""
+    if task_doc.get("source") in {"qualification_engine", "crm_reminder"}:
+        raise HTTPException(409, "This is a human follow-up task. Complete the action in CRM and mark it done.")
     ws = await db.workspaces.find_one({"_id": oid(task_doc["workspace_id"])})
     if not ws:
         return
@@ -331,8 +426,17 @@ async def execute_task(task_doc):
     tid = task_doc["_id"]
     await db.tasks.update_one({"_id": tid}, {"$set": {"status": "running"}})
     try:
+        process = {"blog_post": "blog_generation", "seo_audit": "seo_audit", "social_post_pack": "creative_content", "image_set": "creative_content"}.get(task_doc.get("deliverable_type"), "analytics_task")
+        with usage_scope(ws_id, process, {"task_id": str(tid)}):
+            if task_doc.get("agent") == "content" and task_doc.get("deliverable_type") == "blog_post":
+                data = await agents.write_blog(model_id, brain, task_doc["title"], task_doc.get("objective", ""))
+            elif task_doc.get("agent") == "seo" or task_doc.get("deliverable_type") == "seo_audit":
+                data = await agents.write_seo_audit(model_id, brain, task_doc["title"], task_doc.get("objective", ""))
+            elif task_doc.get("agent") == "creative" or task_doc.get("deliverable_type") in {"social_post_pack", "image_set"}:
+                data = await agents.write_social_post_pack(model_id, brain, task_doc["title"], task_doc.get("objective", ""))
+            else:
+                data = await llm_service.generate_text(model_id, f"You are the AREVEI {task_doc.get('agent')} agent.", f"Task: {task_doc['title']}\nObjective: {task_doc.get('objective','')}\nProduce a concise, actionable deliverable (bullet points).", max_tokens=1200)
         if task_doc.get("agent") == "content" and task_doc.get("deliverable_type") == "blog_post":
-            data = await agents.write_blog(model_id, brain, task_doc["title"], task_doc.get("objective", ""))
             title = data.get("title", task_doc["title"])
             slug = await unique_slug(agents.slugify(title))
             publish = not task_doc.get("requires_approval", False)
@@ -355,7 +459,7 @@ async def execute_task(task_doc):
                                                                   "output_summary": f"Draft ready: {title}"}})
                 await notify(ws_id, "approval", "Blog draft awaiting approval", title)
         elif task_doc.get("agent") == "seo" or task_doc.get("deliverable_type") == "seo_audit":
-            payload = await agents.write_seo_audit(model_id, brain, task_doc["title"], task_doc.get("objective", ""))
+            payload = data
             summary = payload.get("summary") or f"SEO audit ready: {task_doc['title']}"
             await db.tasks.update_one({"_id": tid}, {"$set": {
                 "status": "done",
@@ -365,7 +469,7 @@ async def execute_task(task_doc):
             }})
             await notify(ws_id, "success", "SEO audit ready", task_doc["title"])
         elif task_doc.get("agent") == "creative" or task_doc.get("deliverable_type") in {"social_post_pack", "image_set"}:
-            payload = await agents.write_social_post_pack(model_id, brain, task_doc["title"], task_doc.get("objective", ""))
+            payload = data
             summary = payload.get("summary") or f"Social drafts ready: {task_doc['title']}"
             await db.tasks.update_one({"_id": tid}, {"$set": {
                 "status": "done",
@@ -375,12 +479,7 @@ async def execute_task(task_doc):
             }})
             await notify(ws_id, "success", "Creative drafts ready", task_doc["title"])
         else:
-            summary = await llm_service.generate_text(
-                model_id,
-                f"You are the AREVEI {task_doc.get('agent')} agent.",
-                f"Task: {task_doc['title']}\nObjective: {task_doc.get('objective','')}\n"
-                f"Produce a concise, actionable deliverable (bullet points).",
-                max_tokens=1200)
+            summary = data
             await db.tasks.update_one({"_id": tid}, {"$set": {
                 "status": "done",
                 "output_summary": summary[:4000],
@@ -416,7 +515,7 @@ async def approve_task(task_id: str, request: Request):
         await db.blogs.update_one({"_id": oid(task["output_ref"])},
                                   {"$set": {"status": "published", "published_at": now_iso()}})
     await db.tasks.update_one({"_id": oid(task_id)}, {"$set": {"status": "done"}})
-    await notify(task["workspace_id"], "success", "Approved & published", task["title"])
+    await notify(task["workspace_id"], "success", "Follow-up completed" if task.get("source") == "qualification_engine" else "Approved & published", task["title"])
     doc = await db.tasks.find_one({"_id": oid(task_id)})
     return doc_out(doc)
 
@@ -449,7 +548,8 @@ async def generate_blog(ws_id: str, request: Request, body: dict = Body(...)):
     if not topic:
         raise HTTPException(400, "topic required")
     model_id = body.get("model_id") or ws.get("model_id")
-    data = await agents.write_blog(model_id, ws.get("brain", {}), topic, body.get("objective", ""))
+    with usage_scope(ws_id, "blog_generation"):
+        data = await agents.write_blog(model_id, ws.get("brain", {}), topic, body.get("objective", ""))
     title = data.get("title", topic)
     slug = await unique_slug(agents.slugify(title))
     blog = Blog(workspace_id=ws_id, title=title, slug=slug, excerpt=data.get("excerpt", ""),
@@ -602,7 +702,7 @@ def _extract_note_body(message):
     return ""
 
 
-async def try_manager_crm_action(ws_id, message, settings, leads):
+async def try_manager_crm_action(ws_id, message, settings, leads, *, source="web"):
     from crm import default_field_values, normalize_lead_note, validate_field_values
 
     text = str(message or "")
@@ -623,8 +723,14 @@ async def try_manager_crm_action(ws_id, message, settings, leads):
     if is_note:
         body = _extract_note_body(text) or text
         note_payload = {"body": body, "author": "Manager Chat"}
+        if source == "voice":
+            note_payload.update({"author": "AI Manager Phone", "source": "ai_manager_voice"})
+        elif "plivo" in lower or "call" in lower or "called" in lower:
+            note_payload.update({"source": "call_agent", "call_provider": "plivo", "summary": body})
         note = normalize_lead_note(note_payload)
-        await db.crm_leads.update_one({"workspace_id": ws_id, "_id": oid(lead["id"])}, {"$push": {"lead_notes": note}, "$set": updates})
+        result = await db.crm_leads.update_one({"workspace_id": ws_id, "_id": oid(lead["id"])}, {"$push": {"lead_notes": note}, "$set": updates})
+        if result.matched_count != 1:
+            raise HTTPException(409, "Lead no longer available")
         actions.append("added a lead note")
 
     states = {s["key"]: s for s in settings.get("states", [])}
@@ -635,6 +741,8 @@ async def try_manager_crm_action(ws_id, message, settings, leads):
         if not target_status:
             return f"Which status should I set? Valid statuses are: {', '.join(states.keys())}."
         updates["status"] = target_status
+        from meta_fields import pending_sheet_sync
+        updates.update(pending_sheet_sync(lead, target_status))
         actions.append(f"set status to {target_status}")
 
     values = default_field_values(lead, settings)
@@ -662,7 +770,9 @@ async def try_manager_crm_action(ws_id, message, settings, leads):
             "assigned_salesperson": values.get("assigned_salesperson"),
         })
     if len(updates) > 1:
-        await db.crm_leads.update_one({"workspace_id": ws_id, "_id": oid(lead["id"])}, {"$set": updates})
+        result = await db.crm_leads.update_one({"workspace_id": ws_id, "_id": oid(lead["id"])}, {"$set": updates})
+        if result.matched_count != 1:
+            raise HTTPException(409, "Lead no longer available")
     if actions:
         name = (lead.get("field_values") or {}).get("full_name") or lead.get("phone") or lead.get("id")
         return f"Done. I {', '.join(actions)} for {name}."
@@ -670,6 +780,9 @@ async def try_manager_crm_action(ws_id, message, settings, leads):
 
 
 # ---------------- MANAGER CHAT (SSE) ----------------
+manager_service = ManagerService(db, crm_manager_context, try_manager_crm_action)
+
+
 @api.post("/workspaces/{ws_id}/chat")
 async def manager_chat(ws_id: str, request: Request, body: dict = Body(...)):
     user = await require_user(request)
@@ -677,28 +790,291 @@ async def manager_chat(ws_id: str, request: Request, body: dict = Body(...)):
     message = body.get("message", "")
     history = body.get("history", [])
     model_id = body.get("model_id") or ws.get("model_id")
-    roadmap = {"strategy_summary": ws.get("strategy_summary", ""), "months": ws.get("roadmap", [])}
-    crm_settings, crm_leads, crm_analytics, crm_lead_summaries = await crm_manager_context(ws_id)
-    action_result = await try_manager_crm_action(ws_id, message, crm_settings, crm_leads)
-
     async def gen():
         try:
-            if action_result:
-                yield action_result
-                return
-            crm_context = json.dumps(_compact_crm_context(crm_analytics, crm_lead_summaries), ensure_ascii=False)[:9000]
-            crm_message = (
-                f"{message}\n\nCRM workspace knowledge JSON:\n{crm_context}\n\n"
-                "Use the CRM data above for lead, customer, payment, due amount, daily, and monthly analytics questions. "
-                "If the user asks for a CRM update, explain the exact lead identifier needed unless it was already clear."
-            )
-            async for delta in agents.manager_chat_stream(model_id, ws.get("brain", {}), roadmap, history, crm_message):
-                yield delta
-        except Exception as e:
-            yield f"\n[error: {str(e)[:120]}]"
+            with usage_scope(ws_id, "manager_chat"):
+                async for delta in manager_service.stream(ws, message, history, model_id=model_id):
+                    yield delta
+        except Exception:
+            logger.warning("manager_web_request_failed", extra={"workspace_id": ws_id})
+            yield "\n[error: AI manager request failed. Please retry.]"
 
     return StreamingResponse(gen(), media_type="text/plain",
                              headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+
+# ---------------- PLIVO CALL WEBHOOKS ----------------
+async def _plivo_params(request: Request):
+    params = dict(request.query_params)
+    if request.method.upper() == "POST":
+        form = await request.form()
+        params.update({k: v for k, v in form.items()})
+    return params
+
+
+async def _plivo_body_params(request: Request):
+    if request.method.upper() != "POST":
+        return {}
+    form = await request.form()
+    return {k: v for k, v in form.items()}
+
+
+async def _plivo_result_payload(request: Request):
+    payload = dict(request.query_params)
+    if request.method.upper() != "POST":
+        return payload
+    content_type = request.headers.get("content-type", "").lower()
+    if "application/json" in content_type:
+        try:
+            body = await request.json()
+            if isinstance(body, dict):
+                payload.update(body)
+                return payload
+        except Exception:
+            return payload
+    form = await request.form()
+    payload.update({k: v for k, v in form.items()})
+    return payload
+
+
+@api.api_route("/plivo/workspaces/{ws_id}/calls/{lead_id}/outbound/answer", methods=["GET", "POST"])
+async def plivo_outbound_answer(ws_id: str, lead_id: str, request: Request):
+    from plivo_calls import agent_flow_xml, callback_urls, plivo_config, public_base_url, require_plivo_signature
+
+    params = await _plivo_params(request)
+    await require_plivo_signature(request, await _plivo_body_params(request))
+    from plivo_calls import workspace_plivo_config
+    cfg = await workspace_plivo_config(request, ws_id)
+    lead = await db.crm_leads.find_one({"workspace_id": ws_id, "_id": oid(lead_id)})
+    if not lead:
+        raise HTTPException(404, "Lead not found")
+    call_uuid = str(params.get("CallUUID") or params.get("call_uuid") or "").strip()
+    if call_uuid:
+        from plivo_calls import assign_plivo_call_uuid
+        await assign_plivo_call_uuid(db, ws_id, lead_id, call_uuid)
+    agent_url = (cfg.get("agent_trigger_url") or "").strip()
+    if not agent_url:
+        raise HTTPException(500, "PLIVO_AGENT_TRIGGER_URL is not configured")
+    urls = callback_urls(public_base_url(request), ws_id, lead_id)
+    return agent_flow_xml(agent_url, urls["qualification_result"])
+
+
+@api.api_route("/plivo/agent/callback", methods=["GET", "POST"])
+async def plivo_agent_callback(request: Request):
+    from plivo_calls import (
+        normalize_contacto_qualification_payload,
+        normalize_lead_note,
+        require_qualification_callback_auth,
+        save_qualification_result,
+    )
+
+    await require_qualification_callback_auth(request, await _plivo_body_params(request))
+
+    content_type = request.headers.get("content-type", "")
+    if "application/json" in content_type:
+        payload = await request.json()
+    else:
+        form_data = await request.form()
+        payload = dict(form_data)
+
+    raw_payload = payload
+    payload = normalize_contacto_qualification_payload(payload)
+    nested_object = None
+    if isinstance(payload, dict) and "data" in payload and isinstance(payload.get("data"), dict) and isinstance(payload["data"].get("object"), dict):
+        nested_object = payload["data"]["object"]
+
+    call_uuid = (
+        payload.get("call_uuid")
+        or payload.get("CallUUID")
+        or payload.get("callUuid")
+        or payload.get("request_uuid")
+        or payload.get("RecordingCallUUID")
+        or (nested_object or {}).get("call_uuid")
+        or (nested_object or {}).get("CallUUID")
+        or ""
+    )
+    conversation_id = (
+        payload.get("conversation_id")
+        or payload.get("conversationId")
+        or payload.get("session_id")
+        or payload.get("call_session_id")
+        or (nested_object or {}).get("conversation_id")
+        or ""
+    )
+    logger.info("Plivo agent callback received call_uuid=%s conversation_id=%s", call_uuid, conversation_id)
+
+    if not call_uuid:
+        logger.warning("Plivo agent callback missing call_uuid")
+        raise HTTPException(422, "Missing CallUUID")
+
+    lead = await db.crm_leads.find_one({"workspace_id": request.query_params.get("workspace_id"), "plivo_call_uuid": str(call_uuid)})
+    if not lead:
+        lead = await db.crm_leads.find_one({"workspace_id": request.query_params.get("workspace_id"), "qualification_call.call_uuid": str(call_uuid)})
+    if not lead and conversation_id:
+        lead = await db.crm_leads.find_one({"workspace_id": request.query_params.get("workspace_id"), "qualification_call.session_id": str(conversation_id)})
+    if not lead:
+        session = await db.plivo_call_sessions.find_one({"workspace_id": request.query_params.get("workspace_id"), "$or": [{"provider_identifiers.call_uuid": str(call_uuid)}, {"provider_identifiers.request_uuid": str(call_uuid)}]})
+        if session and ObjectId.is_valid(session.get("lead_id", "")):
+            lead = await db.crm_leads.find_one({"_id": ObjectId(session["lead_id"]), "workspace_id": session["workspace_id"]})
+    if not lead:
+        logger.warning("Plivo agent callback could not resolve CRM lead")
+        raise HTTPException(404, "Call could not be matched to a lead")
+
+    ws_id = lead.get("workspace_id")
+    lead_id = str(lead.get("_id"))
+    logger.info("Plivo agent callback resolved workspace_id=%s lead_id=%s call_uuid=%s", ws_id, lead_id, call_uuid)
+
+    result = await save_qualification_result(db, ws_id, lead_id, raw_payload)
+    return {"status": "success", "result": result, "call_uuid": call_uuid, "lead_id": lead_id, "workspace_id": ws_id}
+
+
+@api.get("/plivo/workspaces/{ws_id}/calls/debug")
+async def plivo_calls_debug(ws_id: str, request: Request, lead_id: str = None):
+    from plivo_calls import plivo_config_debug, public_base_url
+
+    user = await require_user(request)
+    await owned_workspace(ws_id, user)
+    from voice_api import webhooks
+    from voice_config import load_config, public_config
+    doc, _ = await load_config(db, ws_id, "plivo", enabled=False)
+    return {**public_config(doc), "webhooks": webhooks(ws_id, "plivo")}
+
+
+@api.api_route("/plivo/workspaces/{ws_id}/calls/outbound/status", methods=["GET", "POST"])
+async def plivo_outbound_status(ws_id: str, request: Request):
+    from plivo_calls import log_call_note, mark_plivo_event, require_plivo_signature, store_plivo_event, sync_qualification_status_from_payload
+
+    params = await _plivo_params(request)
+    await require_plivo_signature(request, await _plivo_body_params(request))
+    lead_id = str(params.get("lead_id") or "").strip()
+    if not lead_id:
+        return {"ok": True, "logged": False}
+    from plivo_calls import save_qualification_result
+    return await save_qualification_result(db, ws_id, lead_id, params)
+
+
+@api.api_route("/plivo/workspaces/{ws_id}/calls/{lead_id}/qualification/result", methods=["GET", "POST"])
+async def plivo_qualification_result(ws_id: str, lead_id: str, request: Request):
+    from plivo_calls import require_qualification_callback_auth, save_qualification_result
+
+    await require_qualification_callback_auth(request, await _plivo_body_params(request))
+    payload = await _plivo_result_payload(request)
+    return await save_qualification_result(db, ws_id, lead_id, payload)
+
+
+@api.api_route("/plivo/workspaces/{ws_id}/calls/inbound/answer", methods=["GET", "POST"])
+async def plivo_inbound_answer(ws_id: str, request: Request):
+    from plivo_calls import callback_urls, find_or_create_inbound_lead, inbound_bridge_xml, plivo_config, public_base_url, require_plivo_signature
+
+    params = await _plivo_params(request)
+    await require_plivo_signature(request, await _plivo_body_params(request))
+    from plivo_calls import workspace_plivo_config
+    cfg = await workspace_plivo_config(request, ws_id)
+    caller = params.get("From") or params.get("CallerName") or ""
+    lead, created = await find_or_create_inbound_lead(db, ws_id, caller)
+    await log_plivo_inbound_started(ws_id, lead["id"], params, created)
+    urls = callback_urls(public_base_url(request), ws_id, lead["id"])
+    return inbound_bridge_xml(cfg["staff_number"], urls["recording"] + "&call_direction=inbound")
+
+
+async def log_plivo_inbound_started(ws_id, lead_id, params, created):
+    from plivo_calls import log_call_note
+
+    await log_call_note(db, ws_id, lead_id, params, {
+        "event": "inbound_started",
+        "call_direction": "inbound",
+        "body": "Inbound Plivo call received" + (" and new CRM lead created." if created else "."),
+        "outcome": "new_lead_created" if created else "matched_existing_lead",
+    })
+
+
+async def maybe_process_recording_as_qualification(db, ws_id, lead_id, payload):
+    from plivo_calls import normalize_contacto_qualification_payload, save_qualification_result
+
+    candidate = normalize_contacto_qualification_payload(payload)
+    if not isinstance(candidate, dict):
+        return None
+    text_signal = (
+        candidate.get("conversation_summary")
+        or candidate.get("summary")
+        or candidate.get("call_summary")
+        or candidate.get("final_summary")
+        or candidate.get("transcript")
+        or candidate.get("transcription")
+        or candidate.get("recording_url")
+        or candidate.get("recordingUrl")
+    )
+    if not text_signal:
+        return None
+
+    target_lead_id = str(lead_id or "").strip()
+    if not target_lead_id:
+        call_uuid = (
+            candidate.get("call_uuid")
+            or candidate.get("CallUUID")
+            or candidate.get("callUuid")
+            or candidate.get("request_uuid")
+            or candidate.get("RecordingCallUUID")
+            or ""
+        )
+        if not call_uuid:
+            return None
+        for query in (
+            {"workspace_id": ws_id, "plivo_call_uuid": str(call_uuid)},
+            {"workspace_id": ws_id, "qualification_call.call_uuid": str(call_uuid)},
+        ):
+            lead = await db.crm_leads.find_one(query)
+            if lead:
+                target_lead_id = str(lead.get("_id"))
+                break
+        if not target_lead_id:
+            return None
+
+    try:
+        return await save_qualification_result(db, ws_id, target_lead_id, candidate)
+    except Exception:
+        logger.exception("Application-side qualification evaluation failed for recording callback ws_id=%s lead_id=%s", ws_id, target_lead_id)
+        raise
+
+
+@api.api_route("/plivo/workspaces/{ws_id}/calls/recording", methods=["GET", "POST"])
+async def plivo_recording_callback(ws_id: str, request: Request):
+    from plivo_calls import log_call_note, mark_plivo_event, require_plivo_signature, store_plivo_event
+
+    params = await _plivo_params(request)
+    await require_plivo_signature(request, await _plivo_body_params(request))
+    lead_id = str(params.get("lead_id") or "").strip()
+    payload = dict(params)
+    nested_object = params.get("data") if isinstance(params.get("data"), dict) else {}
+    if isinstance(nested_object.get("object"), dict):
+        nested_event_data = nested_object["object"].get("event_data") or {}
+        if isinstance(nested_event_data, dict):
+            payload.update({k: v for k, v in nested_event_data.items()})
+    direction = params.get("call_direction") or params.get("Direction") or "outbound"
+    if not lead_id:
+        candidate_call_uuid = (
+            payload.get("call_uuid")
+            or payload.get("CallUUID")
+            or payload.get("callUuid")
+            or payload.get("request_uuid")
+            or (nested_object.get("object") or {}).get("call_uuid")
+            or ""
+        )
+        if candidate_call_uuid:
+            for query in (
+                {"workspace_id": ws_id, "plivo_call_uuid": str(candidate_call_uuid)},
+                {"workspace_id": ws_id, "qualification_call.call_uuid": str(candidate_call_uuid)},
+            ):
+                lead = await db.crm_leads.find_one(query)
+                if lead:
+                    lead_id = str(lead.get("_id"))
+                    break
+    if not lead_id and not payload.get("conversation_summary") and not payload.get("transcript") and not payload.get("transcription"):
+        return {"ok": True, "logged": False}
+    if not lead_id:
+        raise HTTPException(404, "Call could not be matched to a lead")
+    from plivo_calls import save_qualification_result
+    return await save_qualification_result(db, ws_id, lead_id, payload)
 
 
 # ---------------- PUBLIC (no auth) ----------------
@@ -710,6 +1086,80 @@ async def public_workspace(key: str, request: Request):
     _assert_blog_origin_allowed(ws, request)
     _assert_public_blog_rate(ws, request)
     return {"name": ws.get("name"), "website_url": ws.get("website_url")}
+
+
+@api.post("/public/check-demo")
+async def create_check_demo_lead(request: Request, body: dict = Body(...)):
+    from crm import build_manual_lead, ensure_crm_settings
+    from plivo_calls import normalize_lead_phone, start_qualification_call
+
+    name = str(body.get("name") or "").strip()
+    email = str(body.get("email") or "").strip()
+    phone = normalize_lead_phone(body.get("phone"))
+    if not name or not email or not phone:
+        raise HTTPException(400, "Name, email, and phone number are required")
+
+    configured_workspace = os.environ.get("CHECK_DEMO_WORKSPACE_ID", "").strip()
+    ws = None
+    if configured_workspace:
+        try:
+            ws = await db.workspaces.find_one({"_id": oid(configured_workspace)})
+        except Exception:
+            ws = None
+    if not ws:
+        ws = await db.workspaces.find_one({}, sort=[("created_at", 1)])
+    if not ws:
+        raise HTTPException(503, "Demo workspace is not configured")
+
+    ws_id = str(ws["_id"])
+    settings = await ensure_crm_settings(db, ws_id)
+    lead_doc = build_manual_lead(ws_id, {
+        "field_values": {
+            "full_name": name,
+            "email": email,
+            "phone": phone,
+            "source": "check_demo",
+        },
+    }, settings)
+    lead_doc["source"] = "check_demo"
+    lead_doc["qualification_status"] = "pending"
+    lead_doc["timeline"] = [{"type": "created", "label": "Check Demo request submitted", "created_at": now_iso()}]
+    await db.crm_leads.insert_one(lead_doc)
+    result = await start_qualification_call(db, ws_id, str(lead_doc["_id"]), request)
+    return {"status": result.get("status"), "lead_id": str(lead_doc["_id"]), "message": "Your AI demo call is being connected now."}
+
+
+@api.get("/public/check-demo/{lead_id}")
+async def get_check_demo_result(lead_id: str):
+    try:
+        lead = await db.crm_leads.find_one({"_id": oid(lead_id), "source": "check_demo"})
+    except Exception:
+        lead = None
+    if not lead:
+        raise HTTPException(404, "Demo call not found")
+
+    values = lead.get("field_values") or {}
+    qualification = lead.get("qualification_call") or {}
+    communication = lead.get("communication_summary") or {}
+    call_status = qualification.get("status") or communication.get("last_call_status") or "pending"
+    return {
+        "name": values.get("full_name") or lead.get("full_name") or "",
+        "email": values.get("email") or lead.get("email") or "",
+        "phone": values.get("phone") or lead.get("phone") or "",
+        "call_status": call_status,
+        "qualification_status": lead.get("qualification_status") or qualification.get("qualification_status") or "pending",
+        "qualification_category": qualification.get("qualification_category") or communication.get("qualification_category") or "",
+        "summary": qualification.get("summary") or communication.get("latest_summary") or "",
+        "transcript": qualification.get("transcript") or "",
+        "call_timestamp": qualification.get("call_timestamp") or lead.get("created_at") or "",
+        "duration": qualification.get("duration") or communication.get("last_duration") or "",
+        "recording_url": qualification.get("recording_url") or communication.get("last_recording_url") or "",
+        "completed": bool(
+            qualification.get("transcript")
+            or qualification.get("qualification_status")
+            or str(call_status).lower() in {"completed", "failed", "busy", "no_answer", "rejected", "cancelled", "canceled", "hangup"}
+        ),
+    }
 
 
 @api.get("/public/blogs")
@@ -777,123 +1227,60 @@ async def scheduler_loop():
     while True:
         try:
             now = datetime.now(timezone.utc).isoformat()
-            task = await db.tasks.find_one({"status": "pending", "requires_approval": False,
-                                             "scheduled_time": {"$lte": now}})
+            workspace_scope = [value.strip() for value in os.environ.get("BACKGROUND_WORKSPACE_IDS", "").split(",") if value.strip()]
+            task_query = {"status": "pending", "requires_approval": False, "scheduled_time": {"$lte": now}}
+            lead_query = {
+                "qualification_call.status": "scheduled",
+                "qualification_call.scheduled_for": {"$lte": now},
+                "$or": [{"deleted_at": {"$exists": False}}, {"deleted_at": None}],
+            }
+            if workspace_scope:
+                task_query["workspace_id"] = {"$in": workspace_scope}
+                lead_query["workspace_id"] = {"$in": workspace_scope}
+            task = await db.tasks.find_one(task_query)
             if task:
                 logger.info("Scheduler executing task %s", task.get("title"))
                 await execute_task(task)
+            from plivo_calls import start_qualification_call
+
+            due_lead = await db.crm_leads.find_one(lead_query)
+            if due_lead:
+                ws_id = due_lead["workspace_id"]
+                lead_id = str(due_lead["_id"])
+                fake_request = type("RequestContext", (), {
+                    "headers": {},
+                    "url": type("UrlContext", (), {"scheme": "http", "netloc": "", "path": "", "query": ""})(),
+                })()
+                logger.info("Scheduler starting CRM qualification call workspace=%s lead=%s", ws_id, lead_id)
+                await start_qualification_call(db, ws_id, lead_id, fake_request, auto=True, raise_on_error=False)
         except Exception:
             logger.exception("scheduler tick failed")
-        await asyncio.sleep(30)
+        await asyncio.sleep(5)
 
 
 async def google_sheets_poller_loop():
-    import httpx
-    from models import CRMLead
-    from crm import active_fields, ensure_crm_settings
-    from google_sheets import refresh_access_token
+    from google_sheets import retry_sheet_statuses, ensure_drive_watch
     await asyncio.sleep(15)
     while True:
         try:
-            cursor = db.workflows.find({"kind": "ads_to_crm", "status": "published"})
+            workflow_query = {"kind": "ads_to_crm", "status": "published"}
+            workspace_scope = [value.strip() for value in os.environ.get("BACKGROUND_WORKSPACE_IDS", "").split(",") if value.strip()]
+            if workspace_scope:
+                workflow_query["workspace_id"] = {"$in": workspace_scope}
+            await retry_sheet_statuses(db, workspace_scope)
+            cursor = db.workflows.find(workflow_query)
             async for wf in cursor:
                 ws_id = wf["workspace_id"]
                 conn = await db.google_sheet_connections.find_one({"workspace_id": ws_id})
                 if not conn or not conn.get("spreadsheet_id") or not conn.get("sheet_name"):
                     continue
-                
-                spreadsheet_id = conn["spreadsheet_id"]
-                sheet_name = conn["sheet_name"]
-                headers = conn.get("header_row", [])
-                col_map = conn.get("column_map", {})
-                current_cursor = conn.get("cursor", 1)
-                crm_settings = await ensure_crm_settings(db, ws_id)
-                crm_field_keys = {f["key"] for f in active_fields(crm_settings)}
-                
-                start_row = current_cursor + 1
-                end_row = start_row + 200
-                range_str = f"{sheet_name}!A{start_row}:Z{end_row}"
-                
-                access_token = conn.get("tokens", {}).get("access_token")
-                if not access_token:
+                try:
+                    # Imports are triggered by Google webhooks. This only renews
+                    # Google's expiring channel and retries CRM-to-Sheet writes.
+                    await ensure_drive_watch(db, conn)
+                except Exception as error:
+                    logger.warning("Sheet webhook renewal failed workspace=%s error_type=%s", ws_id, type(error).__name__)
                     continue
-                
-                async def fetch_values(token):
-                    async with httpx.AsyncClient() as client:
-                        url = f"https://sheets.googleapis.com/v4/spreadsheets/{spreadsheet_id}/values/{range_str}"
-                        return await client.get(url, headers={"Authorization": f"Bearer {token}"})
-                
-                res = await fetch_values(access_token)
-                if res.status_code == 401:
-                    try:
-                        class FakeRequest:
-                            def __init__(self, app_inst):
-                                self.app = app_inst
-                        
-                        fake_req = FakeRequest(app)
-                        access_token = await refresh_access_token(conn, fake_req)
-                        res = await fetch_values(access_token)
-                    except Exception as e:
-                        logger.error("Failed to auto refresh token for workspace %s: %s", ws_id, e)
-                        await db.workflows.update_one({"_id": wf["_id"]}, {"$set": {"status": "draft"}})
-                        await notify(ws_id, "error", "Google Sheets workflow paused", "Authentication expired. Please reconnect.")
-                        continue
-                
-                if res.status_code != 200:
-                    logger.error("Failed to poll sheet values for workspace %s: %s", ws_id, res.text)
-                    continue
-                
-                data = res.json()
-                rows = data.get("values", [])
-                if not rows:
-                    continue
-                
-                new_leads_count = 0
-                for idx, row in enumerate(rows):
-                    row_num = start_row + idx
-                    padded_row = list(row) + [""] * max(0, len(headers) - len(row))
-                    row_dict = {}
-                    for h_idx, h_name in enumerate(headers):
-                        if h_idx < len(padded_row):
-                            row_dict[h_name] = padded_row[h_idx]
-                    
-                    lead_id_header = col_map.get("meta_lead_id")
-                    lead_id_val = row_dict.get(lead_id_header) if lead_id_header else None
-                    field_values = {}
-                    for field_key in crm_field_keys:
-                        header_name = col_map.get(field_key)
-                        if header_name and header_name in row_dict:
-                            field_values[field_key] = row_dict.get(header_name)
-                    
-                    row_key = lead_id_val if lead_id_val else f"{spreadsheet_id}_{sheet_name}_{row_num}"
-                    
-                    existing_lead = await db.crm_leads.find_one({"workspace_id": ws_id, "sheet_row_key": row_key})
-                    if not existing_lead:
-                        lead_doc = CRMLead(
-                            workspace_id=ws_id,
-                            workflow_kind="ads_to_crm",
-                            source="google_sheet",
-                            sheet_row_key=row_key,
-                            email=field_values.get("email"),
-                            full_name=field_values.get("full_name"),
-                            phone=field_values.get("phone"),
-                            address=field_values.get("address"),
-                            assigned_salesperson=field_values.get("assigned_salesperson"),
-                            field_values=field_values,
-                            fields=row_dict,
-                            status="new"
-                        )
-                        await db.crm_leads.insert_one(lead_doc.to_mongo())
-                        new_leads_count += 1
-                
-                new_cursor = current_cursor + len(rows)
-                await db.google_sheet_connections.update_one(
-                    {"workspace_id": ws_id},
-                    {"$set": {"cursor": new_cursor, "updated_at": now_iso()}}
-                )
-                
-                if new_leads_count > 0:
-                    await notify(ws_id, "success", f"{new_leads_count} new leads imported", f"Imported {new_leads_count} new lead(s) from your connected Google Sheet.")
                     
         except Exception:
             logger.exception("google sheets poller tick failed")
@@ -903,10 +1290,29 @@ async def google_sheets_poller_loop():
 from google_sheets import router as google_sheets_router
 from workflows import router as workflows_router
 from crm import router as crm_router
+from plivo_agents import router as plivo_agents_router
+from qualification_api import router as qualification_router
+from crm_performance import router as crm_performance_router
+from crm_workspace import router as crm_workspace_router
+from properties import router as properties_router
+from catalog import router as catalog_router
+from sales_modules import router as sales_modules_router
+from ai_usage import router as ai_usage_router
 
 api.include_router(google_sheets_router)
 api.include_router(workflows_router)
 api.include_router(crm_router)
+api.include_router(plivo_agents_router)
+from voice_api import router as voice_providers_router
+api.include_router(voice_providers_router)
+api.include_router(qualification_router)
+api.include_router(crm_performance_router)
+api.include_router(crm_workspace_router)
+api.include_router(properties_router)
+api.include_router(catalog_router)
+api.include_router(sales_modules_router)
+api.include_router(ai_usage_router)
+api.include_router(build_voice_router(db, manager_service, owned_workspace, require_user))
 
 app.include_router(build_auth_router(db))
 app.include_router(build_coding_router(db))
@@ -925,19 +1331,17 @@ app.add_middleware(
 @app.on_event("startup")
 async def startup():
     app.state.db = db
-    await db.users.create_index("email", unique=True)
-    await db.password_reset_tokens.create_index("token_hash", unique=True)
-    await db.password_reset_tokens.create_index("expires_at", expireAfterSeconds=0)
-    await db.workspaces.create_index("public_key")
-    await db.blogs.create_index("slug", unique=True)
-    await db.code_projects.create_index("user_id")
-    await db.code_projects.create_index("workspace_id")
-    await db.workflows.create_index([("workspace_id", 1), ("kind", 1)])
-    await db.crm_leads.create_index([("workspace_id", 1), ("sheet_row_key", 1)], unique=True)
-    await db.crm_settings.create_index("workspace_id", unique=True)
-    await seed_admin(db)
-    asyncio.create_task(scheduler_loop())
-    asyncio.create_task(google_sheets_poller_loop())
+    # Indexes, data normalization, and admin provisioning belong to the
+    # explicit deployment migration, not every serverless cold start.
+    app.state.voice_storage_ready = True
+    background_jobs_disabled = os.environ.get("DISABLE_BACKGROUND_JOBS", "").strip().lower() in {"1", "true", "yes"}
+    if not background_jobs_disabled:
+        if os.environ.get("VERCEL"):
+            logger.warning("Background loops are enabled on Vercel; keep them enabled for compatibility until a durable worker is deployed")
+        asyncio.create_task(scheduler_loop())
+        asyncio.create_task(google_sheets_poller_loop())
+    else:
+        logger.info("Background scheduler and Google Sheets poller disabled")
     logger.info("Arevei backend ready")
 
 

@@ -17,7 +17,7 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState(false);
   const [url, setUrl] = useState("");
-  const [modelId, setModelId] = useState("meta-llama/llama-3.3-70b-instruct");
+  const [modelId, setModelId] = useState("openai.gpt-oss-120b");
   const [creating, setCreating] = useState(false);
 
   useEffect(() => {
@@ -70,7 +70,7 @@ export default function Dashboard() {
           <div className="h-16 px-5 flex items-center justify-between gap-3">
             <div className="min-w-0">
               <h2 className="font-display font-bold truncate">Arevei</h2>
-              <p className="text-xs text-muted-foreground truncate">Create your first CRM workspace</p>
+              <p className="text-xs text-muted-foreground truncate">Create your first dashboard workspace</p>
             </div>
             <ThemeToggle />
           </div>
@@ -81,7 +81,7 @@ export default function Dashboard() {
             <div className="border border-dashed border-border rounded-md p-10 sm:p-16 text-center bg-card/40">
               <Globe className="w-10 h-10 mx-auto text-muted-foreground mb-4" />
               <h1 className="font-display text-2xl sm:text-3xl font-black tracking-tight">Create your first workspace</h1>
-              <p className="text-muted-foreground mt-2 mb-6">Paste a website URL to train the business brain and open your CRM dashboard.</p>
+              <p className="text-muted-foreground mt-2 mb-6">Paste a website URL to train the business brain and open the unified dashboard.</p>
               <Dialog open={open} onOpenChange={setOpen}>
                 <DialogTrigger asChild>
                   <button data-testid="new-workspace-btn" className="inline-flex items-center gap-2 px-5 h-11 rounded-full bg-primary text-primary-foreground font-semibold hover:-translate-y-0.5 transition-transform">

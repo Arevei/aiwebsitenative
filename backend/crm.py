@@ -1,15 +1,16 @@
 import html
 import re
+import asyncio
 from copy import deepcopy
 from datetime import datetime, timedelta, timezone
 
 from bson import ObjectId
-from fastapi import APIRouter, Body, HTTPException, Query, Request, Response
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request, Response
 from fastapi.responses import HTMLResponse
 
 from models import now_iso
-
-router = APIRouter(prefix="/workspaces/{ws_id}/crm")
+from meta_fields import META_FIELDS, pending_sheet_sync, strip_meta_phone_prefix
+from request_metrics import timed
 
 VALID_FIELD_TYPES = {
     "text",
@@ -42,8 +43,9 @@ DEFAULT_FIELDS = [
 DEFAULT_STATES = [
     {"key": "new", "label": "New", "color": "blue", "order": 1},
     {"key": "contacted", "label": "Contacted", "color": "amber", "order": 2},
-    {"key": "won", "label": "Won", "color": "emerald", "order": 3},
-    {"key": "lost", "label": "Lost", "color": "red", "order": 4},
+    {"key": "ai_qualified", "label": "AI Qualified", "color": "emerald", "order": 3},
+    {"key": "won", "label": "Won", "color": "emerald", "order": 4},
+    {"key": "lost", "label": "Lost", "color": "red", "order": 5},
 ]
 DEFAULT_PAYMENT_STAGES = []
 DEFAULT_TEMPLATE = {
@@ -87,17 +89,17 @@ def db_from(request):
     return request.app.state.db if hasattr(request.app.state, "db") else request.app.extra.get("db")
 
 
-async def require_workspace_access(request, ws_id):
-    from auth import get_current_user
+async def require_workspace_access(request: Request, ws_id: str):
+    from auth import get_current_user_and_workspace
 
     db = db_from(request)
-    user = await get_current_user(request, db)
-    workspace = await db.workspaces.find_one({"_id": oid(ws_id)})
-    if not workspace:
-        raise HTTPException(status_code=404, detail="Workspace not found")
-    if str(workspace.get("user_id")) != str(user.get("_id")) and user.get("role") != "admin":
-        raise HTTPException(status_code=403, detail="Forbidden")
-    return user, workspace
+    return await get_current_user_and_workspace(request, db, ws_id)
+
+
+router = APIRouter(
+    prefix="/workspaces/{ws_id}/crm",
+    dependencies=[Depends(require_workspace_access)],
+)
 
 
 def doc_out(doc):
@@ -109,7 +111,7 @@ def doc_out(doc):
 
 
 def iso_after_days(days):
-    return (datetime.now(timezone.utc) + timedelta(days=days)).isoformat()
+    return datetime.now(timezone.utc) + timedelta(days=days)
 
 
 async def purge_expired_trashed_leads(db, ws_id):
@@ -132,6 +134,8 @@ def normalize_field(field, existing=None):
     key = keyify(field.get("key") or field.get("label") or existing.get("key"))
     if not key:
         raise HTTPException(status_code=400, detail="Field key or label required")
+    if key in META_FIELDS or key.startswith("google_sheet_") or key == "last_google_sheet_sync_at":
+        raise HTTPException(400, "Source attribution and sync fields are read-only")
     field_type = field.get("type") or existing.get("type") or "text"
     if field_type not in VALID_FIELD_TYPES:
         raise HTTPException(status_code=400, detail="Invalid field type")
@@ -174,6 +178,13 @@ def normalize_states(states):
         clean = deepcopy(DEFAULT_STATES)
     if not any(s["key"] == "new" for s in clean):
         clean.insert(0, deepcopy(DEFAULT_STATES[0]))
+    if not any(s["key"] == "ai_qualified" for s in clean):
+        clean.append({
+            "key": "ai_qualified",
+            "label": "AI Qualified",
+            "color": "emerald",
+            "order": max((s.get("order", 0) for s in clean), default=0) + 1,
+        })
     return sorted(clean, key=lambda s: s.get("order", 0))
 
 
@@ -221,9 +232,11 @@ async def ensure_crm_settings(db, ws_id):
     settings = await db.crm_settings.find_one({"workspace_id": ws_id})
     if settings:
         fields = phone_first_fields(settings.get("fields") or [])
-        if fields != (settings.get("fields") or []):
-            await db.crm_settings.update_one({"workspace_id": ws_id}, {"$set": {"fields": fields, "updated_at": now_iso()}})
-            settings["fields"] = fields
+        states = normalize_states(settings.get("states") or [])
+        # Compatibility normalization stays read-only. migrate_runtime.py
+        # persists the normalized representation outside request handling.
+        settings["fields"] = fields
+        settings["states"] = states
         return settings
     settings = {
         "workspace_id": ws_id,
@@ -249,6 +262,8 @@ def default_field_values(doc, settings):
         key = field["key"]
         if key not in values and doc.get(key) is not None:
             values[key] = doc.get(key)
+    if "phone" in values:
+        values["phone"] = strip_meta_phone_prefix(values["phone"])
     return values
 
 
@@ -265,6 +280,10 @@ def decorate_lead(doc, settings):
         out["payment_plan"] = recalculate_payment_plan(out.get("payment_plan") or {}, receipts)
     elif out.get("conversion_type") == "single_payment":
         out["payment_summary"] = single_payment_summary(out, receipts)
+    from qualification_service import audit_payload
+    for field in ("qualification_call", "communication_summary", "lead_notes"):
+        if field in out:
+            out[field] = audit_payload(out[field])
     return out
 
 
@@ -277,7 +296,7 @@ def validate_field_values(values, settings):
     for key, value in values.items():
         if key not in allowed:
             continue
-        clean[key] = value
+        clean[key] = strip_meta_phone_prefix(value) if key == "phone" else value
     for key, field in allowed.items():
         if field.get("required") and not str(clean.get(key, "")).strip():
             raise HTTPException(status_code=400, detail=f"{field['label']} is required")
@@ -289,12 +308,75 @@ def lead_query(ws_id, include_trashed=False, only_trashed=False):
     if only_trashed:
         q["deleted_at"] = {"$ne": None}
     elif not include_trashed:
-        q["$or"] = [{"deleted_at": {"$exists": False}}, {"deleted_at": None}]
+        # Equality with null also matches legacy documents where the field is
+        # absent and can use the compound list indexes.
+        q["deleted_at"] = None
     return q
 
 
-def doc_id_text(doc):
-    return str(doc.get("id") or doc.get("_id") or "")
+LEAD_SUMMARY_FIELDS = {
+    "workspace_id": 1, "field_values": 1, "status": 1,
+    "customer_status": 1, "conversion_type": 1,
+    "qualification_status": 1, "qualification_call.status": 1,
+    "qualification_call.scheduled_for": 1,
+    "qualification_call.qualification_status": 1,
+    "qualification_call.qualification_category": 1,
+    "created_at": 1, "updated_at": 1, "deleted_at": 1, "delete_after": 1,
+}
+
+
+LEAD_SEARCH_FIELDS = (
+    "field_values.full_name", "full_name", "field_values.phone", "phone",
+    "field_values.email", "email", "meta_campaign_name", "campaign_name",
+    "field_values.campaign_name", "fields.campaign_name",
+)
+LEAD_CAMPAIGN_FIELDS = ("meta_campaign_name", "campaign_name", "field_values.campaign_name", "fields.campaign_name")
+
+
+def apply_lead_filters(query, search="", campaign="", created_from=None, created_before=None):
+    """Apply the same CRM filters to records and pipeline views."""
+    query = dict(query)
+    for term, fields in ((search.strip(), LEAD_SEARCH_FIELDS), (campaign.strip(), LEAD_CAMPAIGN_FIELDS)):
+        if term:
+            pattern = {"$regex": re.escape(term), "$options": "i"}
+            query.setdefault("$and", []).append({"$or": [{field: pattern} for field in fields]})
+    if created_from or created_before:
+        if ((created_from and created_from.tzinfo is None)
+                or (created_before and created_before.tzinfo is None)):
+            raise HTTPException(422, "Date filters must include a timezone")
+        if created_from and created_before and created_from >= created_before:
+            raise HTTPException(422, "From time must be before the end time")
+        bounds = {}
+        if created_from:
+            bounds["$gte"] = created_from.astimezone(timezone.utc).isoformat()
+        if created_before:
+            bounds["$lt"] = created_before.astimezone(timezone.utc).isoformat()
+        query["created_at"] = bounds
+    return query
+
+
+async def paginated_leads(
+    db, ws_id, settings, status=None, page=1, limit=20, search="", trashed=False,
+    campaign="", created_from=None, created_before=None,
+):
+    safe_limit = max(1, min(int(limit or 20), 100))
+    safe_page = max(1, int(page or 1))
+    query = lead_query(ws_id, only_trashed=trashed)
+    if status:
+        query["status"] = status
+    query = apply_lead_filters(query, search, campaign, created_from, created_before)
+    cursor = (db.crm_leads.find(query, LEAD_SUMMARY_FIELDS)
+              .sort("created_at", -1)
+              .skip((safe_page - 1) * safe_limit)
+              .limit(safe_limit))
+    total, docs = await asyncio.gather(
+        db.crm_leads.count_documents(query),
+        cursor.to_list(safe_limit),
+    )
+    return {
+        "items": [decorate_lead(doc, settings) for doc in docs],
+        "total": total, "page": safe_page, "limit": safe_limit,
+    }
 
 
 def build_manual_lead(ws_id, body, settings):
@@ -322,6 +404,14 @@ def build_manual_lead(ws_id, body, settings):
         "assigned_salesperson": values.get("assigned_salesperson"),
         "notes": "",
         "lead_notes": [],
+        "communication_summary": {},
+        "qualification_call": {},
+        "lead_status": "NEW",
+        "call_outcome": None,
+        "qualification_score": None,
+        "lead_temperature": None,
+        "call_attempt_count": 0,
+        "campaign_id": body.get("campaign_id"),
         "fields": {},
         "field_values": values,
         "status": status,
@@ -420,7 +510,7 @@ def money_value(value):
 
 
 def money_text(value):
-    value = max(0, float(value or 0))
+    value = max(0.0, float(value or 0))
     return str(int(value)) if value.is_integer() else f"{value:.2f}".rstrip("0").rstrip(".")
 
 
@@ -475,131 +565,6 @@ def month_key(value):
     return parsed.strftime("%Y-%m") if parsed else ""
 
 
-def filter_date(value, label):
-    if not str(value or "").strip():
-        return None
-    parsed = parse_date(value)
-    if not parsed:
-        raise HTTPException(status_code=400, detail=f"Invalid {label}")
-    return parsed
-
-
-def receipt_effective_datetime(receipt):
-    return parse_date(receipt.get("payment_date")) or parse_date(receipt.get("created_at")) or datetime.min.replace(tzinfo=timezone.utc)
-
-
-def receipt_list_item(lead, receipt):
-    values = lead.get("field_values") or {}
-    customer = receipt.get("customer") if isinstance(receipt.get("customer"), dict) else {}
-    lead_id = doc_id_text(lead)
-    lead_name = (
-        values.get("full_name")
-        or lead.get("full_name")
-        or customer.get("name")
-        or "Customer"
-    )
-    return {
-        "id": str(receipt.get("id") or ""),
-        "receipt_number": receipt.get("receipt_number", ""),
-        "amount": receipt.get("amount", ""),
-        "due_amount": receipt.get("due_amount", ""),
-        "payment_date": receipt.get("payment_date") or receipt.get("created_at") or "",
-        "payment_method": receipt.get("payment_method", ""),
-        "status": receipt.get("status", ""),
-        "payment_stage": receipt.get("payment_stage", ""),
-        "transaction_id": receipt.get("transaction_id", ""),
-        "description": receipt.get("description", ""),
-        "created_at": receipt.get("created_at", ""),
-        "lead_id": lead_id,
-        "lead_name": lead_name,
-        "phone": values.get("phone") or lead.get("phone") or customer.get("phone", ""),
-        "email": values.get("email") or lead.get("email") or customer.get("email", ""),
-    }
-
-
-def receipt_matches_filters(item, search="", from_dt=None, to_dt=None, status="", payment_method="", min_amount=None, max_amount=None):
-    term = str(search or "").strip().lower()
-    if term:
-        searchable = [
-            item.get("receipt_number"),
-            item.get("transaction_id"),
-            item.get("description"),
-            item.get("payment_stage"),
-            item.get("payment_method"),
-            item.get("status"),
-            item.get("lead_name"),
-            item.get("phone"),
-            item.get("email"),
-            item.get("amount"),
-        ]
-        if not any(term in str(value or "").lower() for value in searchable):
-            return False
-
-    receipt_dt = receipt_effective_datetime(item)
-    if from_dt and receipt_dt.date() < from_dt.date():
-        return False
-    if to_dt and receipt_dt.date() > to_dt.date():
-        return False
-
-    status_value = str(status or "").strip().lower()
-    if status_value and status_value != "all" and str(item.get("status") or "").strip().lower() != status_value:
-        return False
-
-    method_value = str(payment_method or "").strip().lower()
-    if method_value and method_value != "all" and str(item.get("payment_method") or "").strip().lower() != method_value:
-        return False
-
-    amount = money_value(item.get("amount"))
-    if min_amount is not None and amount < min_amount:
-        return False
-    if max_amount is not None and amount > max_amount:
-        return False
-    return True
-
-
-def build_receipts_page(
-    leads,
-    page=1,
-    limit=12,
-    search="",
-    from_date="",
-    to_date="",
-    status="",
-    payment_method="",
-    min_amount="",
-    max_amount="",
-):
-    from_dt = filter_date(from_date, "from_date")
-    to_dt = filter_date(to_date, "to_date")
-    min_value = money_value(min_amount) if str(min_amount or "").strip() else None
-    max_value = money_value(max_amount) if str(max_amount or "").strip() else None
-    safe_limit = max(1, min(int(limit or 12), 100))
-    safe_page = max(1, int(page or 1))
-
-    items = []
-    for lead in leads or []:
-        for receipt in lead.get("receipts") or []:
-            item = receipt_list_item(lead, receipt)
-            if receipt_matches_filters(item, search, from_dt, to_dt, status, payment_method, min_value, max_value):
-                items.append(item)
-
-    items.sort(
-        key=lambda item: (
-            receipt_effective_datetime(item),
-            parse_date(item.get("created_at")) or datetime.min.replace(tzinfo=timezone.utc),
-            str(item.get("receipt_number") or ""),
-        ),
-        reverse=True,
-    )
-    start = (safe_page - 1) * safe_limit
-    return {
-        "items": items[start:start + safe_limit],
-        "total": len(items),
-        "page": safe_page,
-        "limit": safe_limit,
-    }
-
-
 def receipt_is_collected(receipt):
     status = str(receipt.get("status") or "").strip().lower()
     if not status:
@@ -649,6 +614,7 @@ def zero_crm_analytics(now=None):
         "day_buckets": [],
         "month_buckets": [],
         "recent_receipts": [],
+        "scheduled_calls": [],
     }
 
 
@@ -682,6 +648,18 @@ def build_crm_analytics(leads, now=None, day_limit=30, month_limit=12):
             analytics["totals"]["active_leads"] += 1
         if status == "new":
             analytics["totals"]["new_leads"] += 1
+        qualification = lead.get("qualification_call") or {}
+        if qualification.get("status") == "scheduled":
+            values = lead.get("field_values") or {}
+            analytics["scheduled_calls"].append({
+                "lead_id": str(lead.get("id") or lead.get("_id") or ""),
+                "lead_name": values.get("full_name") or lead.get("full_name") or values.get("phone") or lead.get("phone") or "Unnamed Lead",
+                "phone": values.get("phone") or lead.get("phone") or "",
+                "status": qualification.get("status"),
+                "scheduled_for": qualification.get("scheduled_for", ""),
+                "qualification_category": qualification.get("qualification_category", ""),
+                "qualification_score": qualification.get("qualification_score"),
+            })
         if created_month == this_month:
             analytics["this_month_totals"]["leads"] += 1
         if created_day == today:
@@ -749,6 +727,10 @@ def build_crm_analytics(leads, now=None, day_limit=30, month_limit=12):
         recent_receipts,
         key=lambda r: str(r.get("payment_date") or ""),
         reverse=True,
+    )[:10]
+    analytics["scheduled_calls"] = sorted(
+        analytics["scheduled_calls"],
+        key=lambda r: str(r.get("scheduled_for") or ""),
     )[:10]
     return analytics
 
@@ -1145,9 +1127,11 @@ def normalize_lead_note(body):
         "author": str(body.get("author") or "Internal").strip() or "Internal",
         "created_at": now_iso(),
     }
-    for key in ("source",):
+    for key in ("source", "call_provider", "call_id", "direction", "duration", "outcome", "transcript", "summary"):
         if body.get(key) is not None:
             normalized[key] = str(body.get(key) or "").strip()
+    if normalized.get("source") == "call_agent" and not normalized.get("call_provider"):
+        normalized["call_provider"] = "plivo"
     return normalized
 
 
@@ -1384,47 +1368,11 @@ async def update_organization(ws_id: str, request: Request, body: dict = Body(..
 
 @router.get("/analytics/overview")
 async def crm_analytics_overview(ws_id: str, request: Request):
-    await require_workspace_access(request, ws_id)
     db = db_from(request)
     settings = await ensure_crm_settings(db, ws_id)
-    await purge_expired_trashed_leads(db, ws_id)
     docs = await db.crm_leads.find(lead_query(ws_id)).sort("created_at", -1).to_list(5000)
     leads = [decorate_lead(doc, settings) for doc in docs]
     return build_crm_analytics(leads)
-
-
-@router.get("/receipts")
-async def list_receipts(
-    ws_id: str,
-    request: Request,
-    page: int = Query(1),
-    limit: int = Query(12),
-    search: str = Query(""),
-    from_date: str = Query(""),
-    to_date: str = Query(""),
-    status: str = Query(""),
-    payment_method: str = Query(""),
-    min_amount: str = Query(""),
-    max_amount: str = Query(""),
-):
-    await require_workspace_access(request, ws_id)
-    db = db_from(request)
-    settings = await ensure_crm_settings(db, ws_id)
-    await purge_expired_trashed_leads(db, ws_id)
-    docs = await db.crm_leads.find(lead_query(ws_id)).sort("created_at", -1).to_list(5000)
-    leads = [decorate_lead(doc, settings) for doc in docs]
-    return build_receipts_page(
-        leads,
-        page=page,
-        limit=limit,
-        search=search,
-        from_date=from_date,
-        to_date=to_date,
-        status=status,
-        payment_method=payment_method,
-        min_amount=min_amount,
-        max_amount=max_amount,
-    )
 
 
 @router.get("/leads")
@@ -1434,33 +1382,63 @@ async def list_leads(
     status: str = Query(None),
     page: int = Query(None),
     limit: int = Query(20),
-    search: str = Query(""),
+    search: str = Query("", max_length=200),
+    campaign: str = Query("", max_length=200),
+    created_from: datetime = Query(None),
+    created_before: datetime = Query(None),
     trashed: bool = Query(False),
 ):
     db = db_from(request)
     settings = await ensure_crm_settings(db, ws_id)
-    await purge_expired_trashed_leads(db, ws_id)
     q = lead_query(ws_id, only_trashed=trashed)
     if status:
         q["status"] = status
-    all_docs = await db.crm_leads.find(q).sort("created_at", -1).to_list(1000)
-    decorated = [decorate_lead(d, settings) for d in all_docs]
-    if search:
-        term = search.lower()
-        decorated = [
-            lead for lead in decorated
-            if any(term in str(v or "").lower() for v in (lead.get("field_values") or {}).values())
-        ]
+    q = apply_lead_filters(q, search, campaign, created_from, created_before)
     if page is None:
-        return decorated
-    safe_limit = max(1, min(int(limit or 20), 100))
-    safe_page = max(1, int(page or 1))
-    start = (safe_page - 1) * safe_limit
+        docs = await db.crm_leads.find(q).sort("created_at", -1).to_list(1000)
+        return [decorate_lead(doc, settings) for doc in docs]
+    return await paginated_leads(
+        db, ws_id, settings, status, page, limit, search, trashed,
+        campaign, created_from, created_before,
+    )
+
+
+@router.get("/bootstrap")
+async def crm_bootstrap(
+    ws_id: str,
+    request: Request,
+    status: str = Query(None),
+    page: int = Query(1),
+    limit: int = Query(20),
+    search: str = Query(""),
+    campaign: str = Query(""),
+    created_from: datetime = Query(None),
+    created_before: datetime = Query(None),
+    trashed: bool = Query(False),
+):
+    """Return the initial CRM screen with one workspace authorization check."""
+    from plivo_agents import _selected_agent_id, _workspace_agents
+
+    db = db_from(request)
+    async with timed(request, "db_crm_settings"):
+        settings = await ensure_crm_settings(db, ws_id)
+    async with timed(request, "db_crm_bootstrap"):
+        leads, agents, selected_agent_id = await asyncio.gather(
+            paginated_leads(
+                db, ws_id, settings, status, page, limit, search, trashed,
+                campaign, created_from, created_before,
+            ),
+            _workspace_agents(db, ws_id),
+            _selected_agent_id(db, ws_id),
+        )
     return {
-        "items": decorated[start:start + safe_limit],
-        "total": len(decorated),
-        "page": safe_page,
-        "limit": safe_limit,
+        "settings": doc_out(settings),
+        "agents": {
+            "agents": agents,
+            "selected_agent_config_id": selected_agent_id,
+            "legacy_environment_agent": None,
+        },
+        "leads": leads,
     }
 
 
@@ -1468,9 +1446,11 @@ async def list_leads(
 async def create_lead(ws_id: str, request: Request, body: dict = Body(...)):
     db = db_from(request)
     settings = await ensure_crm_settings(db, ws_id)
-    await purge_expired_trashed_leads(db, ws_id)
     lead_doc = build_manual_lead(ws_id, body, settings)
     await db.crm_leads.insert_one(lead_doc)
+    from plivo_calls import schedule_first_qualification_call
+
+    await schedule_first_qualification_call(db, ws_id, str(lead_doc["_id"]))
     return decorate_lead(await db.crm_leads.find_one({"workspace_id": ws_id, "_id": lead_doc["_id"]}), settings)
 
 
@@ -1478,18 +1458,39 @@ async def create_lead(ws_id: str, request: Request, body: dict = Body(...)):
 async def get_lead(ws_id: str, lead_id: str, request: Request):
     db = db_from(request)
     settings = await ensure_crm_settings(db, ws_id)
-    await purge_expired_trashed_leads(db, ws_id)
     doc = await db.crm_leads.find_one({"workspace_id": ws_id, "_id": oid(lead_id)})
     if not doc:
         raise HTTPException(status_code=404, detail="Lead not found")
     return decorate_lead(doc, settings)
 
 
+@router.post("/leads/{lead_id}/calls/outbound")
+async def start_lead_outbound_call(ws_id: str, lead_id: str, request: Request, body: dict = Body(None)):
+    from plivo_calls import start_outbound_call, start_qualification_call
+
+    db = db_from(request)
+    body = body or {}
+    if body.get("mode") == "staff_bridge":
+        return await start_outbound_call(db, ws_id, lead_id, request)
+    return await start_qualification_call(db, ws_id, lead_id, request, agent_config_id=body.get("agent_config_id"))
+
+
+@router.post("/leads/{lead_id}/calls/qualification/cancel")
+async def cancel_lead_qualification_call(
+    ws_id: str, lead_id: str, request: Request,
+    access=Depends(require_workspace_access),
+):
+    user, _ = access
+    from plivo_calls import cancel_scheduled_qualification_call
+
+    db = db_from(request)
+    return await cancel_scheduled_qualification_call(db, ws_id, lead_id, user.get("email") or user.get("name") or "admin")
+
+
 @router.delete("/leads/{lead_id}")
 async def trash_lead(ws_id: str, lead_id: str, request: Request):
     db = db_from(request)
     settings = await ensure_crm_settings(db, ws_id)
-    await purge_expired_trashed_leads(db, ws_id)
     now = now_iso()
     result = await db.crm_leads.update_one(
         {
@@ -1508,7 +1509,6 @@ async def trash_lead(ws_id: str, lead_id: str, request: Request):
 async def restore_lead(ws_id: str, lead_id: str, request: Request):
     db = db_from(request)
     settings = await ensure_crm_settings(db, ws_id)
-    await purge_expired_trashed_leads(db, ws_id)
     result = await db.crm_leads.update_one(
         {"workspace_id": ws_id, "_id": oid(lead_id), "deleted_at": {"$ne": None}},
         {"$set": {"updated_at": now_iso()}, "$unset": {"deleted_at": "", "delete_after": ""}},
@@ -1586,12 +1586,28 @@ async def update_lead(ws_id: str, lead_id: str, request: Request, body: dict = B
         "assigned_salesperson": values.get("assigned_salesperson"),
         "updated_at": now_iso(),
     }
+    updates.update(pending_sheet_sync(doc, status))
+    if status == "won" and (doc.get("opportunity") or {}).get("module") == "real_estate":
+        _, workspace = await require_workspace_access(request, ws_id)
+        from sales_modules import finalize_opportunity
+        updates["opportunity"] = await finalize_opportunity(db, ws_id, doc, workspace)
+        updates["customer_status"] = "customer"
+        updates["converted_at"] = doc.get("converted_at") or now_iso()
+    qualification = doc.get("qualification_call") or {}
+    if doc.get("status") == "lost" and status != "lost" and qualification.get("qualification_category") == "junk":
+        updates["qualification_call.qualification_category"] = ""
+        updates["qualification_call.last_error"] = ""
+        updates["qualification_call.disconnection_reason"] = ""
     await db.crm_leads.update_one({"workspace_id": ws_id, "_id": oid(lead_id)}, {"$set": updates})
+    if pending_sheet_sync(doc, status):
+        from google_sheets import sync_lead_status
+        await sync_lead_status(db, ws_id, lead_id)
     return decorate_lead(await db.crm_leads.find_one({"workspace_id": ws_id, "_id": oid(lead_id)}), settings)
 
 
 @router.post("/leads/{lead_id}/convert")
 async def convert_lead(ws_id: str, lead_id: str, request: Request, body: dict = Body(default=None)):
+    await require_workspace_access(request, ws_id)
     db = db_from(request)
     settings = await ensure_crm_settings(db, ws_id)
     body = body or {}
@@ -1602,17 +1618,25 @@ async def convert_lead(ws_id: str, lead_id: str, request: Request, body: dict = 
     if conversion_type not in {"single_payment", "payment_plan"}:
         raise HTTPException(status_code=400, detail="Invalid conversion type")
     plan = {} if conversion_type == "single_payment" else recalculate_payment_plan(normalize_payment_plan(body.get("payment_plan") or lead.get("payment_plan") or {}), lead.get("receipts") or [])
+    workspace = await db.workspaces.find_one({"_id": oid(ws_id)}) or {}
+    from sales_modules import finalize_opportunity
+    opportunity = await finalize_opportunity(db, ws_id, lead, workspace)
     await db.crm_leads.update_one(
         {"workspace_id": ws_id, "_id": oid(lead_id)},
         {"$set": {
+            **pending_sheet_sync(lead, "won"),
             "status": "won",
             "customer_status": "customer",
             "conversion_type": conversion_type,
             "converted_at": lead.get("converted_at") or now_iso(),
             "payment_plan": plan,
+            "opportunity": opportunity,
             "updated_at": now_iso(),
         }},
     )
+    if pending_sheet_sync(lead, "won"):
+        from google_sheets import sync_lead_status
+        await sync_lead_status(db, ws_id, lead_id)
     return decorate_lead(await db.crm_leads.find_one({"workspace_id": ws_id, "_id": oid(lead_id)}), settings)
 
 

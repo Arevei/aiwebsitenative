@@ -13,7 +13,6 @@ from crm import (  # noqa: E402
     TRASH_RETENTION_DAYS,
     build_crm_analytics,
     build_manual_lead,
-    build_receipts_page,
     effective_organization,
     invoice_html,
     lead_query,
@@ -94,7 +93,7 @@ def test_lead_query_separates_active_and_trash():
     trash = lead_query("workspace-1", only_trashed=True)
 
     assert active["workspace_id"] == "workspace-1"
-    assert active["$or"] == [{"deleted_at": {"$exists": False}}, {"deleted_at": None}]
+    assert active["deleted_at"] is None
     assert trash == {"workspace_id": "workspace-1", "deleted_at": {"$ne": None}}
     assert TRASH_RETENTION_DAYS == 30
 
@@ -138,15 +137,23 @@ def test_lead_note_requires_body_and_gets_timestamp():
         assert exc.status_code == 400
 
 
-def test_lead_note_preserves_source_metadata_only():
+def test_call_agent_note_preserves_plivo_metadata():
     note = normalize_lead_note({
         "body": "Customer asked for a callback tomorrow",
         "author": "Manager Chat",
-        "source": "manager_chat",
+        "source": "call_agent",
+        "call_id": "call-123",
+        "direction": "outbound",
+        "duration": "73",
+        "outcome": "callback_requested",
+        "transcript": "Please call me tomorrow.",
+        "summary": "Callback requested",
     })
 
-    assert note["source"] == "manager_chat"
-    assert set(note) == {"id", "body", "author", "created_at", "source"}
+    assert note["source"] == "call_agent"
+    assert note["call_provider"] == "plivo"
+    assert note["call_id"] == "call-123"
+    assert note["outcome"] == "callback_requested"
 
 
 def test_crm_analytics_empty_returns_zeroes():
@@ -208,64 +215,6 @@ def test_crm_analytics_counts_leads_payments_due_and_buckets():
     assert analytics["status_counts"] == {"new": 1, "contacted": 1, "won": 1}
     assert {row["month"]: row["leads"] for row in analytics["month_buckets"]} == {"2026-08": 1, "2026-09": 2}
     assert analytics["recent_receipts"][0]["receipt_number"] == "REC-1"
-
-
-def test_receipts_page_flattens_latest_first_and_paginates():
-    leads = [
-        {
-            "id": "lead-1",
-            "field_values": {"full_name": "Diya Sharma", "phone": "999", "email": "diya@example.com"},
-            "receipts": [
-                {"id": "r1", "receipt_number": "REC-1", "amount": "4000", "payment_date": "2026-09-01", "created_at": "2026-09-01T08:00:00+00:00", "status": "Paid", "payment_method": "UPI"},
-                {"id": "r2", "receipt_number": "REC-2", "amount": "6000", "payment_date": "2026-09-05", "created_at": "2026-09-05T08:00:00+00:00", "status": "Paid", "payment_method": "Card"},
-            ],
-        },
-        {
-            "id": "lead-2",
-            "field_values": {"full_name": "Aman Rao", "phone": "888"},
-            "receipts": [{"id": "r3", "receipt_number": "REC-3", "amount": "1000", "created_at": "2026-09-03T10:00:00+00:00", "status": "Pending", "payment_method": "Cash"}],
-        },
-    ]
-
-    page = build_receipts_page(leads, page=1, limit=2)
-
-    assert page["total"] == 3
-    assert page["limit"] == 2
-    assert [item["receipt_number"] for item in page["items"]] == ["REC-2", "REC-3"]
-    assert page["items"][0]["lead_name"] == "Diya Sharma"
-    assert page["items"][1]["lead_id"] == "lead-2"
-
-
-def test_receipts_page_combines_filters():
-    leads = [
-        {
-            "id": "lead-1",
-            "field_values": {"full_name": "Diya Sharma", "phone": "999", "email": "diya@example.com"},
-            "receipts": [
-                {"id": "r1", "receipt_number": "REC-1", "amount": "4000", "payment_date": "2026-09-01", "status": "Paid", "payment_method": "UPI", "transaction_id": "UPI-001"},
-                {"id": "r2", "receipt_number": "REC-2", "amount": "9000", "payment_date": "2026-09-05", "status": "Paid", "payment_method": "Card", "transaction_id": "CARD-001"},
-            ],
-        },
-        {
-            "id": "lead-2",
-            "field_values": {"full_name": "Aman Rao", "phone": "888"},
-            "receipts": [{"id": "r3", "receipt_number": "REC-3", "amount": "1000", "payment_date": "2026-09-03", "status": "Pending", "payment_method": "Cash"}],
-        },
-    ]
-
-    page = build_receipts_page(
-        leads,
-        search="diya",
-        from_date="2026-09-02",
-        to_date="2026-09-30",
-        status="Paid",
-        payment_method="Card",
-        min_amount="5000",
-        max_amount="10000",
-    )
-
-    assert page["total"] == 1
-    assert page["items"][0]["receipt_number"] == "REC-2"
 
 
 def test_single_payment_summary_tracks_partial_and_full_due():

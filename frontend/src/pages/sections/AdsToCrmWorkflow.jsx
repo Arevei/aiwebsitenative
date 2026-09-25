@@ -6,6 +6,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import api, { API, formatError } from "../../lib/api";
+import { SHEET_MAPPING_FIELDS } from "../../lib/metaFields";
 
 export default function AdsToCrmWorkflow() {
   const { wsId } = useParams();
@@ -16,7 +17,10 @@ export default function AdsToCrmWorkflow() {
   const [sheetTabs, setSheetTabs] = useState([]);
   const [fetchingSheets, setFetchingSheets] = useState(false);
   const [fetchingTabs, setFetchingTabs] = useState(false);
+  const [tabError, setTabError] = useState("");
   const [binding, setBinding] = useState(false);
+  const [aiMatching, setAiMatching] = useState(false);
+  const [mappingNotice, setMappingNotice] = useState("");
   const [savingMap, setSavingMap] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const [workflow, setWorkflow] = useState({ status: "draft" });
@@ -24,7 +28,10 @@ export default function AdsToCrmWorkflow() {
   const [sheetTabName, setSheetTabName] = useState("");
   const [columnMap, setColumnMap] = useState({});
 
-  const crmFields = (settings.fields || []).filter((field) => field.active !== false);
+  const mappingFields = connStatus.mapping_fields || SHEET_MAPPING_FIELDS;
+  const mappingKeys = new Set(mappingFields.map((field) => field.key));
+  const crmFields = [...(settings.fields || []).filter((field) => field.active !== false && !mappingKeys.has(field.key)), ...mappingFields];
+  const canMap = Boolean(connStatus.connected && connStatus.spreadsheet_id && connStatus.header_row?.length);
 
   const loadWorkflow = useCallback(() => {
     api.get(`/workspaces/${wsId}/workflows`)
@@ -39,17 +46,22 @@ export default function AdsToCrmWorkflow() {
     if (!spreadsheetId) {
       setSheetTabs([]);
       setSheetTabName("");
+      setTabError("");
       return;
     }
     try {
       setFetchingTabs(true);
+      setTabError("");
       const r = await api.get(`/google/workspaces/${wsId}/spreadsheets/${spreadsheetId}/tabs`);
       const tabs = r.data || [];
       setSheetTabs(tabs);
       const names = tabs.map((tab) => tab.name);
       setSheetTabName((preferredTab && names.includes(preferredTab)) ? preferredTab : (names[0] || ""));
+      if (!tabs.length) setTabError("No tabs were found in this spreadsheet.");
     } catch (e) {
-      toast.error(formatError(e.response?.data?.detail));
+      const message = formatError(e.response?.data?.detail);
+      setTabError(message);
+      toast.error(message);
       setSheetTabs([]);
     } finally {
       setFetchingTabs(false);
@@ -137,6 +149,7 @@ export default function AdsToCrmWorkflow() {
     const sheetObj = spreadsheets.find((s) => s.id === selectedSpreadsheetId);
     try {
       setBinding(true);
+      setMappingNotice("");
       const r = await api.post(`/google/workspaces/${wsId}/bind`, {
         spreadsheet_id: selectedSpreadsheetId,
         spreadsheet_name: sheetObj?.name || "Spreadsheet",
@@ -150,10 +163,31 @@ export default function AdsToCrmWorkflow() {
         sheet_name: sheetTabName,
         header_row: r.data.headers
       }));
+      setAiMatching(true);
+      const suggested = await api.post(`/google/workspaces/${wsId}/suggest-column-map`);
+      setColumnMap(suggested.data.column_map || {});
+      setMappingNotice(suggested.data.warning || `AI matched ${suggested.data.matched} of ${suggested.data.total} CRM fields. Review the suggestions, then save.`);
+      toast.success(suggested.data.warning ? "Sheet bound with high-confidence matches" : "Sheet bound and AI mapping completed");
     } catch (e) {
       toast.error(formatError(e.response?.data?.detail));
     } finally {
+      setAiMatching(false);
       setBinding(false);
+    }
+  };
+
+  const handleAiMatch = async () => {
+    try {
+      setAiMatching(true);
+      setMappingNotice("");
+      const suggested = await api.post(`/google/workspaces/${wsId}/suggest-column-map`);
+      setColumnMap(suggested.data.column_map || {});
+      setMappingNotice(suggested.data.warning || `AI matched ${suggested.data.matched} of ${suggested.data.total} CRM fields. Review the suggestions, then save.`);
+      toast.success(suggested.data.warning ? "High-confidence matches applied" : "AI mapping completed");
+    } catch (e) {
+      toast.error(formatError(e.response?.data?.detail));
+    } finally {
+      setAiMatching(false);
     }
   };
 
@@ -210,7 +244,7 @@ export default function AdsToCrmWorkflow() {
         <div>
           <h1 className="text-2xl font-bold">Ads to CRM</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Map Google Sheet columns into your configurable CRM fields.
+            Map Google Sheet columns into your CRM. Active workflows receive Google change webhooks and import new rows automatically.
           </p>
         </div>
         {connStatus.connected && connStatus.spreadsheet_id && (
@@ -223,7 +257,7 @@ export default function AdsToCrmWorkflow() {
                 : "bg-primary text-primary-foreground hover:bg-primary/95"
             }`}
           >
-            {workflow.status === "published" ? <><Ban className="w-4 h-4" /> Pause Sync</> : <><Power className="w-4 h-4" /> Activate Poller</>}
+            {workflow.status === "published" ? <><Ban className="w-4 h-4" /> Pause Webhook</> : <><Power className="w-4 h-4" /> Activate Webhook</>}
           </button>
         )}
       </div>
@@ -244,6 +278,7 @@ export default function AdsToCrmWorkflow() {
                 <div className="text-sm">
                   <div className="font-semibold text-emerald-500 flex items-center gap-1.5"><Check className="w-4 h-4" /> Connected</div>
                   <div className="text-muted-foreground mt-0.5">{connStatus.google_email}</div>
+                  {!connStatus.write_access && <button onClick={handleGoogleConnect} className="mt-2 underline">Reconnect Google to allow status updates</button>}
                 </div>
                 <button onClick={handleDisconnect} className="p-2 text-muted-foreground hover:text-destructive transition rounded-lg hover:bg-destructive/5" title="Disconnect account">
                   <Trash2 className="w-4 h-4" />
@@ -284,23 +319,40 @@ export default function AdsToCrmWorkflow() {
                   </select>
                 </label>
               </div>
+              {tabError && selectedSpreadsheetId && (
+                <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3 text-sm">
+                  <span className="text-amber-600 dark:text-amber-400">{tabError}</span>
+                  <button type="button" onClick={() => loadTabs(selectedSpreadsheetId, sheetTabName || connStatus.sheet_name)} disabled={fetchingTabs} className="inline-flex items-center gap-1.5 font-semibold text-primary underline disabled:opacity-50">
+                    <RefreshCw className={`w-3.5 h-3.5 ${fetchingTabs ? "animate-spin" : ""}`} /> Retry tabs
+                  </button>
+                </div>
+              )}
               <button
                 onClick={handleBindSheet}
-                disabled={binding || !selectedSpreadsheetId || !sheetTabName}
+                disabled={binding || aiMatching || !selectedSpreadsheetId || !sheetTabName}
                 className="w-full inline-flex items-center justify-center gap-2 h-10 rounded-lg bg-primary text-primary-foreground font-semibold text-sm hover:bg-primary/95 transition shadow disabled:opacity-50"
               >
-                {binding ? <RefreshCw className="w-4 h-4 animate-spin" /> : <FileSpreadsheet className="w-4 h-4" />}
-                Bind & Fetch Sheet Columns
+                {(binding || aiMatching) ? <RefreshCw className="w-4 h-4 animate-spin" /> : <FileSpreadsheet className="w-4 h-4" />}
+                {aiMatching ? "AI Matching Columns..." : "Bind & AI Match Columns"}
               </button>
             </div>
           )}
 
-          {connStatus.connected && connStatus.spreadsheet_id && connStatus.header_row && (
+          {(
             <div className="p-6 rounded-xl border bg-card space-y-4">
               <h3 className="text-base font-bold flex items-center gap-2">
                 <span className="flex items-center justify-center w-6 h-6 rounded-full bg-primary/10 text-primary text-xs font-semibold">3</span>
                 CRM Column Mapping
               </h3>
+              <p className="text-sm text-muted-foreground">Map Meta lead and attribution columns below. For custom form questions, create a field in <Link className="underline text-primary" to={`/app/w/${wsId}/crm`}>CRM Settings</Link>, then return here to map its Sheet column.</p>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <p className="text-sm text-muted-foreground">AI suggestions are drafts. Review them before saving the mapping.</p>
+                <button type="button" onClick={handleAiMatch} disabled={!canMap || aiMatching} className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold hover:bg-accent disabled:opacity-50">
+                  <RefreshCw className={`w-4 h-4 ${aiMatching ? "animate-spin" : ""}`} /> AI Match Columns
+                </button>
+              </div>
+              {mappingNotice && <p className="rounded-lg border border-primary/20 bg-primary/5 p-3 text-sm text-primary">{mappingNotice}</p>}
+              {!canMap && <p className="text-sm text-muted-foreground">Connect Google and bind a Sheet to choose headers for these fields.</p>}
               <div className="space-y-3">
                 <div className="grid grid-cols-2 gap-4 items-center border-b pb-2">
                   <span className="text-xs font-bold uppercase text-muted-foreground">CRM Field</span>
@@ -312,19 +364,21 @@ export default function AdsToCrmWorkflow() {
                       {field.label} {field.required && <span className="text-destructive">*</span>}
                     </span>
                     <select
+                      aria-label={`Sheet column for ${field.label}`}
+                      disabled={!canMap}
                       value={columnMap[field.key] || ""}
                       onChange={(e) => setColumnMap((prev) => ({ ...prev, [field.key]: e.target.value }))}
                       className="h-9 px-2 rounded-lg border bg-background text-sm focus:outline-none"
                     >
                       <option value="">Ignore</option>
-                      {connStatus.header_row.map((h) => <option key={h} value={h}>{h}</option>)}
+                      {(connStatus.header_row || []).map((h) => <option key={h} value={h}>{h}</option>)}
                     </select>
                   </div>
                 ))}
               </div>
               <button
                 onClick={handleSaveMapping}
-                disabled={savingMap || !columnMap.phone}
+                disabled={!canMap || savingMap || !columnMap.phone}
                 className="w-full mt-4 inline-flex items-center justify-center gap-2 h-10 rounded-lg bg-accent text-accent-foreground font-semibold text-sm hover:bg-accent/80 transition disabled:opacity-50"
               >
                 {savingMap && <RefreshCw className="w-4 h-4 animate-spin" />}
